@@ -1,0 +1,11 @@
+# Thư mục chứa file người dùng tải lên: không liệt kê, không chạy mã, không cho trình duyệt đoán kiểu nội dung.
+Options -Indexes
+<FilesMatch "(?i)\.(php[0-9]?|phtml|phar|pl|py|cgi|sh|htaccess)$">
+  Require all denied
+</FilesMatch>
+<IfModule mod_php.c>
+  php_flag engine off
+</IfModule>
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+</IfModule>

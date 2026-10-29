@@ -1,0 +1,9 @@
+/* HRX extensions */
+:root{--hrx-border:var(--line,#e5e7eb)}
+.table-wrap{width:100%;overflow:auto}
+.table-wrap table{width:100%;border-collapse:collapse}
+.table-wrap th,.table-wrap td{padding:9px 10px;border-bottom:1px solid var(--hrx-border);text-align:left;white-space:nowrap}
+.table-wrap th{font-weight:700;background:var(--soft,#f8fafc)}
+.muted{color:var(--mut,#64748b)}
+#companyForm,#policyForm{gap:14px}
+#companyForm .full{grid-column:1/-1}

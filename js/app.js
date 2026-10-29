@@ -1,0 +1,336 @@
+// UI + router + hành động (event delegation: data-go / data-tab / data-act). Chỉ gọi API.*
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const RL={SUPER_ADMIN:'Quản trị tối cao',HR_MANAGER:'Quản lý nhân sự',EMPLOYEE:'Nhân viên'},ST={ACTIVE:'Hoạt động',LOCKED:'Đã khóa',DELETED:'Đã xóa'};
+const FAM_HIDE=['citizenID','address','email','phone'];
+const GENDER=[['Nam','Nam'],['Nữ','Nữ'],['Khác','Khác']],IMG='image/jpeg,image/png,image/webp',DOC=IMG+',application/pdf';
+const CHILD={
+  positions:{t:'Chức vụ',f:[{k:'position',l:'Chức vụ',r:1},{k:'fromDate',l:'Từ ngày',t:'date',r:1},{k:'isCurrent',l:'Đang giữ',t:'select',o:[['true','Có'],['false','Không']]}],c:['position','fromDate','isCurrent']},
+  work:{t:'Quá trình công tác',f:[{k:'company',l:'Công ty',r:1},{k:'department',l:'Phòng ban'},{k:'position',l:'Chức vụ',r:1},{k:'fromDate',l:'Từ ngày',t:'date',r:1},{k:'toDate',l:'Đến ngày',t:'date'},{k:'description',l:'Mô tả',t:'textarea'}],c:['company','department','position','fromDate','toDate']},
+  degrees:{t:'Bằng cấp',f:[{k:'name',l:'Tên bằng',r:1},{k:'major',l:'Chuyên ngành'},{k:'school',l:'Trường'},{k:'issuedDate',l:'Ngày cấp',t:'date'},{k:'file',l:'File (JPG/PNG/WebP/PDF ≤5MB)',t:'file',a:DOC}],c:['name','major','school','issuedDate']},
+  certificates:{t:'Chứng chỉ',f:[{k:'name',l:'Tên chứng chỉ',r:1},{k:'issuer',l:'Nơi cấp'},{k:'certificateNumber',l:'Số hiệu'},{k:'issuedDate',l:'Ngày cấp',t:'date'},{k:'expiredDate',l:'Hết hạn',t:'date'},{k:'file',l:'File (JPG/PNG/WebP/PDF ≤5MB)',t:'file',a:DOC}],c:['name','issuer','certificateNumber','issuedDate','expiredDate']}};
+const FAM_F=[{k:'relation',l:'Mối quan hệ',r:1,dl:['Cha','Mẹ','Vợ','Chồng','Con','Anh','Chị','Em','Ông','Bà','Cháu','Chú','Bác','Cô','Dì','Cậu','Người thân']},{k:'fullName',l:'Họ tên',r:1},{k:'dateOfBirth',l:'Ngày sinh',t:'date'},{k:'gender',l:'Giới tính',t:'select',o:[['','—'],...GENDER]},{k:'nationality',l:'Quốc tịch'},{k:'citizenID',l:'CCCD',n:1},{k:'address',l:'Địa chỉ',full:1},{k:'email',l:'Email',t:'email'},{k:'phone',l:'Điện thoại',n:1}];
+const PROFILE_F=[{k:'fullName',l:'Họ tên',r:1},{k:'gender',l:'Giới tính',t:'select',o:GENDER},{k:'nationality',l:'Quốc tịch',r:1},{k:'dateOfBirth',l:'Ngày sinh',t:'date',r:1},{k:'citizenID',l:'CCCD',r:1,n:1},{k:'phone',l:'Điện thoại',r:1,n:1},{k:'email',l:'Email',t:'email',r:1},{k:'address',l:'Địa chỉ',full:1},{k:'taxCode',l:'Mã số thuế cá nhân',n:1},{k:'bhxhNo',l:'Số sổ BHXH',n:1},{k:'bankName',l:'Ngân hàng'},{k:'bankAccount',l:'Số tài khoản',n:1},{k:'workRegion',l:'Vùng lương làm việc (I–IV)'}];
+const CONTACT_F=PROFILE_F.filter(f=>['phone','email','address'].includes(f.k));
+let ME=null,TAB='profile',FILTER={q:'',role:'',status:'',page:1,sort:'role',dir:'asc'},AF={q:'',action:'',user:'',from:'',to:'',page:1};
+const pager=(r,w)=>`<div class="bar pager"><span style="color:var(--mut)">Hiển thị dòng ${r.items.length?(r.page-1)*r.pageSize+1:0} - ${(r.page-1)*r.pageSize+r.items.length} · Trang <input class="pgin" type="number" min="1" value="${r.page}" data-pgin="${w}" title="Nhập số trang rồi nhấn Enter"></span><div class="sp"></div>${[['« Đầu',1],['Trước',r.page-1],['Sau',r.page+1],['Cuối »',r.pages]].map(([l,n],i)=>`<button class="sm" data-act="pg" data-w="${w}" data-p="${n}" ${(i<2?r.page<=1:r.page>=r.pages)?'disabled':''}>${l}</button>`).join('')}</div>`;
+
+function toast(m,k='ok'){const t=$('#toast');t.className=k;t.innerHTML=`<i class="fa-solid ${{ok:'fa-circle-check',err:'fa-circle-exclamation',warn:'fa-triangle-exclamation'}[k]||'fa-circle-info'}"></i><span>${esc(m)}</span>`;t.style.display='flex';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',k==='err'?6000:3500)}
+const fld=(f,vals,pre='')=>`<label${f.full?' class="full"':''}>${esc(f.l)}${f.r?' *':''}${f.t==='select'?`<select name="${pre}${f.k}">${f.o.map(([v,t])=>`<option value="${esc(v)}" ${String(vals[f.k])===v?'selected':''}>${esc(t)}</option>`).join('')}</select>`:f.t==='textarea'?`<textarea name="${pre}${f.k}">${esc(vals[f.k])}</textarea>`:`<input name="${pre}${f.k}" type="${f.t||'text'}" ${f.r?'required':''} ${f.a?`accept="${f.a}"`:''} ${f.n?'inputmode="numeric" pattern="[0-9]+" title="Chỉ nhập chữ số"':''} ${f.t==='date'&&API.maxDate(f.k)?`max="${API.maxDate(f.k)}"`:''} ${f.t==='file'?'':`value="${esc(vals[f.k])}"`}${f.dl?` list="dl-${pre}${f.k}"`:''}>${f.dl?`<datalist id="dl-${pre}${f.k}">${f.dl.map(x=>`<option value="${x}">`).join('')}</datalist>`:''}`}</label>`;
+function form(title,fields,vals,submit,ok='Lưu',hook){
+    const d=document.createElement('dialog'),grid=fields.length>4,body=fields.map(f=>(f.sec?`<div class="fsec">${esc(f.sec)}</div>`:'')+fld(f,vals)).join('');
+  d.className=grid?'wide':'';
+  d.innerHTML=`<form><h3>${esc(title)}</h3>${hook&&hook.top||''}<div class="${grid?'fgrid':''}">${body}</div>${hook&&hook.html||''}<div class="err"></div><div class="row"><button type="button" data-x>Hủy</button><button class="pri">${ok}</button></div></form>`;
+  document.body.append(d);d.showModal();d.querySelector('[data-x]').onclick=()=>d.close();d.onclose=()=>d.remove();if(hook)hook.init(d);
+  d.querySelector('form').onsubmit=async e=>{e.preventDefault();const data={};for(const f of fields){const el=e.target.elements[f.k];data[f.k]=f.t==='file'?el.files[0]:el.value}
+    if(hook)hook.collect(e.target,data);
+    try{await submit(data);d.close()}catch(x){d.querySelector('.err').textContent=x.message}}}
+// Khối "thêm chức vụ / công tác / bằng cấp / chứng chỉ" trong form tạo người dùng
+function kidsHook(){let n=0;return{
+  html:`<div class="fsec">Thông tin bổ sung (tuỳ chọn)</div><div class="kids"><div class="bar">${Object.entries(CHILD).map(([k,c])=>`<button type="button" class="sm" data-addkid="${k}">+ ${c.t}</button>`).join('')}</div><div class="kidlist"></div></div>`,
+  init(d){d.querySelector('.kids').onclick=e=>{const b=e.target.closest('[data-addkid]');
+    if(e.target.closest('[data-rmkid]'))e.target.closest('fieldset').remove();
+    if(b){const k=b.dataset.addkid,c=CHILD[k],fs=document.createElement('fieldset'),i=n++;fs.dataset.kind=k;fs.dataset.i=i;
+      fs.innerHTML=`<legend>${c.t}</legend>${c.f.map(f=>fld(f,{isCurrent:'true'},`k${i}_`)).join('')}<button type="button" class="sm bad" data-rmkid>Bỏ mục này</button>`;d.querySelector('.kidlist').append(fs)}}},
+  collect(frm,data){data.kids={};frm.querySelectorAll('fieldset[data-kind]').forEach(fs=>{const k=fs.dataset.kind,row={data:{}};
+    CHILD[k].f.forEach(f=>{const el=fs.querySelector(`[name="k${fs.dataset.i}_${f.k}"]`);if(f.t==='file')row.file=el.files[0];else row.data[f.k]=el.value});
+    (data.kids[k]=data.kids[k]||[]).push(row)})}}}
+const ask=(title,msg,{ok='Xác nhận',cancel='Hủy',danger=false}={})=>new Promise(res=>{
+  const d=document.createElement('dialog'),box=document.body;let v=false;d.className='confirm';
+  d.innerHTML=`<div class="cf-ico ${danger?'bad':''}"><i class="fa-solid ${danger?'fa-triangle-exclamation':'fa-circle-question'}"></i></div><div><h3>${esc(title)}</h3><p>${esc(msg)}</p></div><div class="row"><button type="button" data-x>${esc(cancel)}</button><button type="button" class="pri${danger?' danger':''}" data-ok>${esc(ok)}</button></div>`;
+  box.append(d);d.showModal();
+  d.querySelector('[data-x]').onclick=()=>d.close();
+  d.querySelector('[data-ok]').onclick=()=>{v=true;d.close()};
+  d.onclose=()=>{d.remove();res(v)};
+  d.querySelector(danger?'[data-x]':'[data-ok]').focus()});
+
+const home=()=>{TAB='profile';history.replaceState(null,'',location.pathname+location.search)};
+let busy=0;
+const loading=on=>{let b=$('#prog');if(!b){b=document.createElement('div');b.id='prog';document.body.append(b)}busy=Math.max(0,busy+(on?1:-1));b.classList.toggle('on',busy>0)};
+const run=async f=>{loading(true);try{await f()}catch(x){toast(x.message,'err')}finally{loading(false)}};
+const SKEL=`<div class="skel skel-title"></div><div class="card">${'<div class="skel skel-row"></div>'.repeat(6)}</div>`;
+const CI={positions:'fa-briefcase',work:'fa-building',degrees:'fa-graduation-cap',certificates:'fa-certificate'};
+const empty=(icon,title,sub,btn='')=>`<div class="empty"><div class="empty-ico"><i class="fa-solid ${icon}"></i></div><h4>${esc(title)}</h4><p>${esc(sub)}</p>${btn}</div>`;
+const actCls=a=>/DELETE|REMOVE|HARD/.test(a)?'red':/^(ADD|CREATE|RESTORE)/.test(a)?'green':/^(UPDATE|EDIT|CHANGE|SAVE)/.test(a)?'blue':/LOCK|RESET|ROLE|PROMOTE|ASSIGN/.test(a)?'orange':'slate';
+const dtc=s=>{const d=new Date(s);return`<div>${d.toLocaleDateString('vi-VN')}</div><div class="cell-sub">${d.toLocaleTimeString('vi-VN')}</div>`};
+
+const AVA={}; // cache blob URL theo fileId để không đọc lại file mỗi lần vẽ sidebar
+const MYNAME={}; // cache họ tên theo id người đăng nhập để thanh trên không nhấp nháy
+async function myAvatar(){const els=[$('#meAva'),$('#topAva')].filter(Boolean);if(!els.length)return;
+  const nm=$('#topName');if(nm&&MYNAME[ME.id])nm.textContent=MYNAME[ME.id];
+  try{const p=(await API.getUser(ME.id)).profile;
+    if(p.fullName){MYNAME[ME.id]=p.fullName;const n=$('#topName');if(n)n.textContent=p.fullName}
+    const fid=p.profilePictureFileId;if(!fid)return;
+    const url=AVA[fid]||(AVA[fid]=await API.fileUrl(fid));
+    els.forEach(el=>{if(el.isConnected)el.innerHTML=`<img src="${esc(url)}" alt="" onerror="this.parentNode.textContent=this.parentNode.dataset.ini">`})}catch{}}
+
+const ini=n=>String(n||'').trim().split(/\s+/).slice(-2).map(w=>w[0]||'').join('').toUpperCase();
+const avaBox=(fid,name,cls='')=>`<span class="ava-box ${cls}">${fid?`<img data-fid="${esc(fid)}" alt="" onerror="this.remove()">`:''}<b>${esc(ini(name))}</b></span>`;
+
+async function famAvatars(){
+  await Promise.all([...document.querySelectorAll('.fcard[data-uid]')].map(async c=>{const box=c.querySelector('.ava-box');if(!box||box.querySelector('img'))return;
+    try{const fid=(await API.getUser(c.dataset.uid)).profile.profilePictureFileId;if(!fid)return;
+      const url=AVA[fid]||(AVA[fid]=await API.fileUrl(fid));
+      if(box.isConnected)box.insertAdjacentHTML('afterbegin',`<img src="${esc(url)}" alt="" onerror="this.remove()">`)}catch{}}))}
+const loadFids=(root=document)=>root.querySelectorAll('[data-fid]').forEach(async i=>{try{i.src=await API.fileUrl(i.dataset.fid)}catch{}});
+function shell(html){
+  document.body.classList.remove('nav-open');
+  const navGroups=[['Cá nhân',[['profile','Hồ sơ cá nhân','fa-id-card',1]]],['Nhân sự',[['users','Nhân sự','fa-users',ME.role!=='EMPLOYEE']]],['Hợp đồng & văn bản',[['contracts','Hợp đồng kinh doanh','fa-file-contract',1],['customers','Khách hàng','fa-building',1]]],['Hệ thống',[['company','Thông tin đơn vị','fa-building-circle-check',ME.role==='SUPER_ADMIN'],['policy','Tham số pháp lý','fa-scale-balanced',ME.role==='SUPER_ADMIN'],['audit','Nhật ký','fa-clock-rotate-left',ME.role==='SUPER_ADMIN']]]].map(([g,items])=>[g,items.filter(n=>n[3])]).filter(([g,items])=>items.length);
+  const nav=navGroups.flatMap(x=>x[1]);
+  const cur=location.hash.split('/')[1]||'profile',title=(nav.find(n=>n[0]===cur)||nav[0])[1];
+  $('#app').innerHTML=`<div class="shell"><nav><div class="brand"><span class="brand-logo"><i class="fa-solid fa-users"></i></span><div><div class="brand-name">HRM</div><div class="brand-sub">Quản lý nhân sự</div></div></div>${navGroups.map(([group,items])=>`<div class="nav-group">${group}</div>${items.map(([k,l,ic])=>`<a data-go="${k}" class="${cur===k?'on':''}"><i class="fa-solid ${ic}"></i>${l}</a>`).join('')}`).join('')}<div class="sp"></div>${Store.upMode==='folder'?'<a data-act="dir"><i class="fa-regular fa-folder-open"></i>Thư mục uploads</a>':''}<a data-act="pw"><i class="fa-solid fa-key"></i>Đổi mật khẩu</a><div class="side-user"><span class="avatar" id="meAva" data-ini="${esc(ME.username.slice(0,2).toUpperCase())}">${esc(ME.username.slice(0,2).toUpperCase())}</span><div><div class="side-user-name">${esc(ME.username)}</div><div class="side-user-role">${RL[ME.role]}</div></div></div><a data-act="logout"><i class="fa-solid fa-right-from-bracket"></i>Đăng xuất</a></nav><div class="scrim" data-act="menu"></div><main><div class="topbar"><button class="hamburger" data-act="menu" aria-label="Mở menu"><i class="fa-solid fa-bars"></i></button><span class="crumb-title">${title}</span><div class="sp"></div><span class="chip"><i class="fa-solid fa-database"></i>Dữ liệu: ${Store.mode==='kio'?'KIO':'Local'}</span><div class="top-user"><span class="avatar" id="topAva" data-ini="${esc(ME.username.slice(0,2).toUpperCase())}">${esc(ME.username.slice(0,2).toUpperCase())}</span><div><b id="topName">${esc(MYNAME[ME.id]||ME.username)}</b><small>@${esc(ME.username)}</small></div></div></div><div class="view">${html}</div></main></div>`;
+  loadFids();myAvatar()}
+
+function loginView(){$('#app').innerHTML=`<div class="card login"><div class="brand-logo lg"><i class="fa-solid fa-users"></i></div><h2>Đăng nhập</h2><p class="sub">Hệ thống quản lý nhân sự</p><form id="lf"><label>Tên đăng nhập<input name="u" required autofocus></label><label>Mật khẩu<input name="p" type="password" required></label><div class="err" id="le"></div><button class="pri" style="width:100%">Đăng nhập</button></form></div>`;
+  $('#lf').onsubmit=async e=>{e.preventDefault();try{await API.login(e.target.u.value,e.target.p.value);home();boot()}catch(x){$('#le').textContent=x.message}}}
+function forceChange(){$('#app').innerHTML='<div class="card login"><h2>Đổi mật khẩu</h2><p>Bạn cần đặt mật khẩu mới trước khi tiếp tục.</p><button class="pri" data-act="pw">Đặt mật khẩu mới</button></div>';A.pw()}
+
+const kv=(p,keys)=>`<div class="kv">${keys.map(([k,l])=>`<span>${l}</span><span>${esc(p[k])||'—'}</span>`).join('')}</div>`;
+const facts=a=>`<div class="facts">${a.map(([l,v])=>`<div class="fact"><small>${l}</small><b>${v}</b></div>`).join('')}</div>`;
+// Tóm tắt đầu hồ sơ: chức vụ hiện tại, thời gian công tác (gộp các khoảng chồng nhau), số bằng cấp, chứng chỉ kèm cảnh báo hết hạn (≤30 ngày)
+const DAY=864e5,ymd=s=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||'');return m?Date.UTC(+m[1],m[2]-1,+m[3]):NaN},
+  todayS=()=>{const t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0')};
+function tenure(work){const T=ymd(todayS()),iv=(work||[]).map(w=>[ymd(w.fromDate),ymd(w.toDate)||T]).filter(([a,b])=>!isNaN(a)&&b>=a).sort((x,y)=>x[0]-y[0]);
+  if(!iv.length)return'—';let ms=0,cur=null;
+  for(const[a,b]of iv){if(cur&&a<=cur[1])cur[1]=Math.max(cur[1],b);else{if(cur)ms+=cur[1]-cur[0];cur=[a,b]}}ms+=cur[1]-cur[0];
+  const m=Math.round(ms/DAY/30.4375);if(m<1)return'Dưới 1 tháng';const y=Math.floor(m/12),r=m%12;return[y?y+' năm':'',r?r+' tháng':''].filter(Boolean).join(' ')}
+function certInfo(cs){const t=ymd(todayS());let ex=0,sn=0;for(const c of cs||[]){const e=ymd(c.expiredDate);if(isNaN(e))continue;if(e<t)ex++;else if(e<=t+30*DAY)sn++}return{ex,sn}}
+function summary(d){const cp=(d.positions||[]).filter(r=>String(r.isCurrent)==='true').sort((a,b)=>String(b.fromDate).localeCompare(String(a.fromDate)))[0],{sn}=certInfo(d.certificates);
+  return[['Chức vụ hiện tại',esc(cp&&cp.position)||'—','fa-id-badge','','txt'],['Thời gian công tác',tenure(d.work),'fa-hourglass-half','green','txt'],['Bằng cấp',String((d.degrees||[]).length),'fa-graduation-cap','violet',''],
+    ['Chứng chỉ',(d.certificates||[]).length+(sn?` <span class="tag orange">${sn} sắp hết hạn</span>`:''),'fa-certificate','orange','']]}
+// ----- Chức vụ / Công tác: dòng thời gian. Bằng cấp / Chứng chỉ: bảng trong cùng một tab -----
+const rowActs=(k,id,rid)=>`<button class="sm" data-act="editc" data-id="${id}" data-kind="${k}" data-rid="${rid}">Sửa</button> <button class="sm bad" data-act="delc" data-id="${id}" data-kind="${k}" data-rid="${rid}">Xóa</button>`;
+const addBtn=(k,id,first)=>`<button class="pri" data-act="add" data-id="${id}" data-kind="${k}"><i class="fa-solid fa-plus"></i>Thêm ${CHILD[k].t.toLowerCase()}${first?' đầu tiên':''}</button>`;
+const monthYear=d=>{const m=/^(\d{4})-(\d{2})/.exec(d||'');return m?m[2]+'/'+m[1]:'—'}; // 2024-03-15 → 03/2024
+function tlItem(k,r,id,ed){const cur=k==='positions'?String(r.isCurrent)==='true':!r.toDate,dur=k==='work'?tenure([r]):'—',
+    sub=k==='work'?[r.company,r.department].filter(Boolean).map(esc).join(' · '):'',
+    when=k==='positions'?'Từ '+esc(r.fromDate):`${esc(r.fromDate)} → ${r.toDate?esc(r.toDate):'nay'}${dur!=='—'?' · '+dur:''}`;
+  return`<li class="tl-item${cur?' cur':''}"><div class="tl-date">${monthYear(r.fromDate)}</div><div class="tl-rail"><span class="tl-dot"></span></div><div class="tl-card"><div class="tl-top"><b>${esc(r.position)||'—'}</b>${cur?`<span class="tag ACTIVE">${k==='positions'?'Đang giữ':'Hiện tại'}</span>`:''}</div>${sub?`<div class="tl-sub">${sub}</div>`:''}<div class="tl-when">${when}</div>${k==='work'&&r.description?`<p class="tl-desc">${esc(r.description)}</p>`:''}${ed?`<div class="tl-acts">${rowActs(k,id,r.id)}</div>`:''}</div></li>`}
+// Dòng thời gian nằm ngang, cũ → mới từ trái sang phải; ít mục thì thẻ giãn kín chiều rộng, nhiều mục thì cuộn ngang
+const timeline=(k,rows,id,ed)=>`<ul class="tl" id="tl-${k}" tabindex="0" aria-label="Dòng thời gian: ${CHILD[k].t}">${[...rows].sort((a,b)=>String(a.fromDate).localeCompare(String(b.fromDate))).map(r=>tlItem(k,r,id,ed)).join('')}</ul>`;
+const tlNav=k=>`<span class="tl-nav" data-nav="tl-${k}" hidden><button class="sm" data-act="tlgo" data-t="tl-${k}" data-d="-1" aria-label="Cuộn sang trái"><i class="fa-solid fa-chevron-left"></i></button><button class="sm" data-act="tlgo" data-t="tl-${k}" data-d="1" aria-label="Cuộn sang phải"><i class="fa-solid fa-chevron-right"></i></button></span>`;
+function tlInit(){document.querySelectorAll('.tl').forEach(el=>{el.scrollLeft=el.scrollWidth;const n=document.querySelector(`[data-nav="${el.id}"]`);if(n)n.hidden=el.scrollWidth<=el.clientWidth+1})}
+// Dải chip tóm tắt ở đầu mỗi tab (lấp chỗ trống bên trái thanh nút)
+const chips=a=>`<div class="chips">${a.map(x=>`<span class="chip">${x}</span>`).join('')}</div>`;
+function tlChips(k,rows){const n=rows.length;
+  if(k==='positions'){const cur=rows.filter(r=>String(r.isCurrent)==='true').sort((a,b)=>String(b.fromDate).localeCompare(String(a.fromDate)))[0];
+    return chips([`<b>${n}</b> chức vụ`,`Đang giữ: <b>${esc(cur&&cur.position)||'—'}</b>`])}
+  const cos=new Set(rows.map(r=>String(r.company||'').trim().toLowerCase()).filter(Boolean)).size;
+  return chips([`<b>${n}</b> vị trí`,`<b>${cos}</b> công ty`,`Tổng thời gian: <b>${tenure(rows)}</b>`])}
+const famChips=fam=>{const m={};fam.forEach(r=>{const k=String(r.relation||'').trim()||'Khác';m[k]=(m[k]||0)+1});
+  return chips([`<b>${fam.length}</b> người thân`,...Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${esc(k)}: <b>${v}</b>`)])};
+// Mức hoàn thiện hồ sơ: 6 mục có dữ liệu hay chưa (địa chỉ, chức vụ, quá trình công tác, bằng cấp, chứng chỉ, gia phả).
+// Gợi ý mỗi lần một mục thiếu, chỉ cho người sửa được (chức vụ, công tác do quản lý nhập nên không gợi ý).
+const METER_I=[
+  {l:'Địa chỉ',has:d=>!!String(d.profile.address??'').trim(),tip:'Hãy bổ sung địa chỉ của bạn để hồ sơ thêm đầy đủ nhé.',act:'editp'},
+  {l:'Chức vụ',has:d=>!!(d.positions||[]).length},
+  {l:'Quá trình công tác',has:d=>!!(d.work||[]).length},
+  {l:'Bằng cấp',has:d=>!!(d.degrees||[]).length,tip:'Hãy thêm bằng cấp đầu tiên của bạn để hoàn thiện hồ sơ nhé.',act:'add',kind:'degrees'},
+  {l:'Chứng chỉ',has:d=>!!(d.certificates||[]).length,tip:'Bạn có chứng chỉ nào chưa? Hãy thêm chứng chỉ đầu tiên để hồ sơ thêm nổi bật nhé.',act:'add',kind:'certificates'},
+  {l:'Gia phả',has:d=>!!(d.family||[]).length,tip:'Hãy thêm người thân đầu tiên vào gia phả để hoàn thiện hồ sơ nhé.',act:'addf'}];
+function meter(d,id,canEdit){const miss=METER_I.filter(x=>!x.has(d)),pct=Math.round((METER_I.length-miss.length)/METER_I.length*100),
+    nx=canEdit?miss.find(x=>x.tip):null,
+    note=nx?`<p class="meter-note"><i class="fa-regular fa-lightbulb"></i>${esc(nx.tip)} <button class="sm" data-act="${nx.act}" data-id="${id}"${nx.kind?` data-kind="${nx.kind}"`:''}>${nx.act==='editp'?'Cập nhật':'Thêm ngay'}</button></p>`
+      :miss.length?`<p class="meter-note">Còn thiếu: ${miss.map(x=>esc(x.l)).join(', ')}.</p>`
+      :'<p class="meter-note ok"><i class="fa-solid fa-circle-check"></i>Hồ sơ đã hoàn thiện, cảm ơn bạn!</p>';
+  return`<div class="card pmeter ${pct>=100?'full':pct<50?'low':''}"><h3><i class="fa-solid fa-gauge-high"></i>Mức hoàn thiện hồ sơ</h3><div class="meter" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Mức hoàn thiện hồ sơ"><span style="width:${pct}%"></span></div><b class="pct">${pct}%</b>${note}</div>`}
+// Chức vụ và Quá trình công tác nằm chung một tab, mỗi mục một thẻ: tiêu đề, dải chip, nút cuộn, nút thêm, dòng thời gian
+const tlPanel=(k,rows,id,ed)=>{rows=rows||[];return`<div class="card"><div class="sechd"><h3><i class="fa-solid ${CI[k]}"></i>${CHILD[k].t}</h3>${rows.length?tlChips(k,rows):''}<div class="sp"></div>${tlNav(k)}${ed?addBtn(k,id):''}</div>${rows.length?timeline(k,rows,id,ed):`<p class="none">${ed?'Chưa có. Bấm "Thêm" để bổ sung.':'Chưa có thông tin nào được cập nhật.'}</p>`}</div>`};
+const tlCard=(k,rows,id)=>(rows||[]).length?`<div class="card"><div class="sechd"><h3><i class="fa-solid ${CI[k]}"></i>${CHILD[k].t}</h3><div class="sp"></div>${tlNav(k)}</div>${timeline(k,rows,id,false)}</div>`:'';
+const qCell=(f,r)=>{const v=r[f.k];if(f.k==='expiredDate'&&v){const t=ymd(todayS()),e=ymd(v);return esc(v)+(e<t?' <span class="tag red">Hết hạn</span>':e<=t+30*DAY?' <span class="tag orange">Sắp hết hạn</span>':'')}return esc(v)||'—'};
+function qTable(k,rows,id,ed){const c=CHILD[k],cols=c.f.filter(f=>f.t!=='file'&&c.c.includes(f.k));
+  return`<div class="tbl-wrap"><table><tr>${cols.map(f=>`<th>${f.l}</th>`).join('')}<th></th></tr>${rows.map(r=>`<tr>${cols.map(f=>`<td data-l="${esc(f.l)}">${qCell(f,r)}</td>`).join('')}<td class="acts">${r.fileId?`<button class="sm" data-act="open" data-id="${r.fileId}">Xem file</button> `:''}${ed?rowActs(k,id,r.id):''}</td></tr>`).join('')}</table></div>`}
+function qualCard(k,rows,id,ed,ro){rows=rows||[];if(ro&&!rows.length)return'';
+  return`<div class="card"><div class="sechd"><h3><i class="fa-solid ${CI[k]}"></i>${CHILD[k].t}</h3><div class="sp"></div>${ed?addBtn(k,id):''}</div>${rows.length?qTable(k,rows,id,ed):`<p class="none">${ed?'Chưa có. Bấm "Thêm" để bổ sung.':'Chưa có thông tin nào được cập nhật.'}</p>`}</div>`}
+async function profileView(id){
+  const d=await API.getUser(id),u=d.user,p=d.profile,mng=API.canManage(ME,u),self=ME.id===id;
+  if(TAB==='contracts'&&!d.limited)try{await ContractAPI.ensure()}catch(x){toast('Không tải được hợp đồng: '+x.message,'warn')}
+  if(d.limited){VIEW={d}; // cấp trên: chỉ xem; thẻ đầu + các mục có dữ liệu (không file, không mô tả công tác)
+    shell(`<div class="card phead lim">${avaBox(p.profilePictureFileId,p.fullName,'xl')}<div class="phead-info"><h2>${esc(p.fullName)}</h2><div class="phead-sub">${esc(d.position)||''}</div><div class="phead-tags"><span class="tag ${u.role}">${RL[u.role]}</span><span class="tag slate">Chỉ xem</span></div></div>${facts([['Ngày sinh',esc(p.dateOfBirth)||'—'],['Giới tính',esc(p.gender)||'—'],['Quốc tịch',esc(p.nationality)||'—'],['Thời gian công tác',tenure(d.work)]])}</div>${tlCard('positions',d.positions,id)}${tlCard('work',d.work,id)}${qualCard('degrees',d.degrees,id,false,true)}${qualCard('certificates',d.certificates,id,false,true)}`);tlInit();return}
+  VIEW={d,id};
+  const head=`<div class="card phead">${avaBox(p.profilePictureFileId,p.fullName||u.username,'xl')}<div class="phead-info"><h2>${esc(p.fullName||u.username)}</h2><div class="phead-sub">@${esc(u.username)}</div><div class="phead-tags"><span class="tag ${u.role}">${RL[u.role]}</span><span class="tag ${u.status}">${ST[u.status]}</span></div></div>${mng||self?`<button data-act="editp" data-id="${id}"><i class="fa-solid fa-pen"></i>Sửa hồ sơ</button>`:''}</div>${statRow(summary(d))}`;
+  if(TAB==='work')TAB='positions'; // tab cũ đã gộp vào Chức vụ & công tác
+  if(!PTABS.some(t=>t[0]===TAB))TAB='profile';
+  shell(`${head}<div class="tabs" id="ptabs">${PTABS.map(([k,l])=>`<a data-tab="${k}" data-id="${id}" class="${TAB===k?'on':''}">${l}</a>`).join('')}</div><div id="pbody">${profileBody(d,id)}</div>`);tlInit()}
+const PTABS=[['profile','Hồ sơ'],['positions','Chức vụ & công tác'],['quals','Bằng cấp & chứng chỉ'],['family','Gia phả'],['contracts','Hợp đồng KD']];
+// Nội dung của tab hiện tại (dựng riêng để đổi tab không phải tải lại và vẽ lại thẻ tóm tắt)
+function profileBody(d,id){
+  const u=d.user,p=d.profile,mng=API.canManage(ME,u),self=ME.id===id,editC=k=>k==='positions'||k==='work'?mng:(mng||self);
+  let body,bare=false; // bare: nội dung tự có thẻ riêng
+  if(TAB==='profile'){const g=ks=>kv(p,PROFILE_F.filter(f=>ks.includes(f.k)).map(f=>[f.k,f.l]));
+    body=`<div class="pgrid"><div class="card pc-personal"><h3><i class="fa-regular fa-id-card"></i>Thông tin cá nhân</h3>${g(['fullName','dateOfBirth','gender','nationality','citizenID'])}</div><div class="card"><h3><i class="fa-regular fa-address-book"></i>Liên hệ</h3>${g(['phone','email','address'])}</div><div class="card"><h3>Thông tin lương & thanh toán</h3>${g(['taxCode','bhxhNo','bankName','bankAccount','workRegion'])}</div></div>${meter(d,id,editC('degrees'))}`;bare=true}
+  else if(TAB==='family')body=famBody(d,id,editC('family'));
+  else if(TAB==='contracts'){bare=true;body=empContracts(id)}
+  else if(TAB==='quals'){bare=true;body=['degrees','certificates'].map(k=>qualCard(k,d[k],id,editC(k))).join('')}
+  else{bare=true;body=['positions','work'].map(k=>tlPanel(k,d[k],id,editC(k))).join('')}
+  return bare?body:`<div class="card">${body}</div>`}
+// Đổi tab: chỉ thay nội dung bên dưới, giữ nguyên thẻ tóm tắt (không gọi lại API)
+function switchTab(k,id){const pb=$('#pbody'),pt=$('#ptabs');
+  if(k==='contracts')return false; // cần nạp dữ liệu hợp đồng (bất đồng bộ) nên đi đường route()
+  if(!pb||!pt||!VIEW.d||VIEW.d.limited||VIEW.id!==id)return false;
+  TAB=k;pt.querySelectorAll('a[data-tab]').forEach(a=>a.classList.toggle('on',a.dataset.tab===k));
+  pb.innerHTML=profileBody(VIEW.d,id);loadFids(pb);tlInit();return true}
+let VIEW={};
+const famCard=(r,id,canEdit)=>`<div class="fcard"><div class="fcard-top">${avaBox(r.linked?r.profilePictureFileId:'',r.fullName)}<div class="fcard-name"><b>${esc(r.fullName)}</b><div class="fcard-tags"><span class="tag">${esc(r.relation)}</span>${r.linked?'<span class="tag slate">Nhân sự</span>':''}</div></div>${famMenu(r,id,canEdit)}</div><div class="fcard-meta"><span><i class="fa-regular fa-calendar"></i>${esc(r.dateOfBirth)||'—'}</span><span><i class="fa-solid fa-venus-mars"></i>${esc(r.gender)||'—'}</span></div><button class="sm" data-act="viewf" data-rid="${r.id}">Xem chi tiết</button></div>`;
+const famBody=(d,id,canEdit)=>!d.family.length?empty('fa-users','Chưa có người thân',canEdit?'Thêm người thân đầu tiên để hoàn thiện hồ sơ.':'Chưa có thông tin nào được cập nhật.',canEdit?`<button class="pri" data-act="addf" data-id="${id}"><i class="fa-solid fa-plus"></i>Thêm người thân đầu tiên</button>`:''):`<div class="bar">${famChips(d.family)}<div class="sp"></div>${canEdit?`<button class="pri" data-act="addf" data-id="${id}">Thêm người thân</button>`:''}</div><div class="fam-grid">${d.family.map(r=>famCard(r,id,canEdit)).join('')}</div>`;
+function famMenu(r,id,canEdit){const it=[];
+  if(r.canOpen)it.push(`<button data-go="users/${r.linkedUserId}"><i class="fa-solid fa-id-card"></i>Xem hồ sơ</button>`);
+  if(canEdit)it.push(`<button data-act="editf" data-id="${id}" data-rid="${r.id}"><i class="fa-solid fa-pen"></i>Sửa</button>`,'<hr>',`<button class="bad" data-act="delf" data-id="${id}" data-rid="${r.id}"><i class="fa-solid fa-trash"></i>Xóa</button>`);
+  return it.length?`<details class="more"><summary class="btn-ico" title="Thao tác"><i class="fa-solid fa-ellipsis"></i></summary><div class="menu">${it.join('')}</div></details>`:''}
+// Khối tìm nhân sự để điền sẵn khi thêm người thân
+function famHook(ownerId){let linkId=null;const HIDE=()=>FAM_HIDE;return{
+  top:`<div class="card" style="padding:10px"><p style="margin:0 0 8px;color:var(--mut)">Nếu chọn một nhân sự, hệ thống tự thêm bản ghi đối ứng vào gia phả của họ (ví dụ bạn chọn họ là Cha thì bên họ ghi bạn là Con).</p><label>Tìm nhân sự để điền sẵn (đúng họ tên đầy đủ hoặc số CCCD)<div class="bar" style="margin:3px 0 0"><input id="fq" placeholder="Nhập họ tên đầy đủ hoặc CCCD"><button type="button" id="fgo">Tìm</button></div></label><div id="fres"></div></div>`,
+  init(d){const frm=d.querySelector('form'),res=d.querySelector('#fres'),set=(k,v,dis)=>{const el=frm.elements[k];if(!el)return;el.value=v||'';el.disabled=!!dis;el.placeholder=dis?'Ẩn (chỉ quản lý được xem)':''};
+    const unpick=()=>{linkId=null;FAM_F.forEach(f=>{if(f.k!=='relation')set(f.k,'',false)});res.innerHTML=''};
+    const search=async()=>{try{const L=await API.searchPeople(frm.elements.fq.value,ownerId);
+      res.innerHTML=L.length?L.map((r,i)=>`<div class="bar" style="margin:6px 0 0"><span>${esc(r.fullName)}${r.dateOfBirth?' · '+esc(r.dateOfBirth):''}${r.citizenID?' · '+esc(r.citizenID):''}</span><div class="sp"></div><button type="button" class="sm" data-pick="${i}">Chọn</button></div>`).join(''):'<p style="color:var(--mut)">Không có nhân sự khớp. Bạn có thể tự điền tay bên dưới.</p>';
+      res.onclick=e=>{const b=e.target.closest('[data-pick]');if(b){const r=L[+b.dataset.pick];linkId=r.userId;
+        FAM_F.forEach(f=>{if(f.k!=='relation')set(f.k,r[f.k],r.restricted&&FAM_HIDE.includes(f.k))});
+        res.innerHTML=`<p>Đã chọn: <b>${esc(r.fullName)}</b>. Sửa thông tin khác ngoài Mối quan hệ sẽ chuyển thành bản nhập tay. <button type="button" class="sm" data-unpick>Bỏ chọn</button></p>`;
+        res.onclick=e=>{if(e.target.closest('[data-unpick]'))unpick()}}}}catch(x){res.innerHTML=`<div class="err">${esc(x.message)}</div>`}};
+    d.querySelector('#fgo').onclick=search;frm.elements.fq.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();search()}}},
+  collect(frm,data){data.linkId=linkId}}}
+
+function userMenu(r,m,self,sa){const live=r.status!=='DELETED',it=[],b=(act,ic,l,x='',c='')=>`<button class="${c}" data-act="${act}" data-id="${r.id}"${x}><i class="fa-solid ${ic}"></i>${l}</button>`;
+  if(m&&!self&&live){const lk=r.status==='LOCKED';it.push(b('lock',lk?'fa-lock-open':'fa-lock',lk?'Mở khóa':'Khóa tài khoản',` data-s="${lk?'ACTIVE':'LOCKED'}"`),b('reset','fa-key','Đặt lại mật khẩu'))}
+  if(sa&&!self&&live)it.push(b('role','fa-user-shield','Đổi vai trò',` data-r="${r.role}"`));
+  if(!sa&&r.role==='EMPLOYEE'&&live)it.push(b('promote','fa-arrow-up','Nâng lên QLNS'));
+  if(m&&!self&&live)it.push('<hr>',b('del','fa-trash','Xóa tài khoản','','bad'));
+  if(sa&&!live)it.push(b('restore','fa-rotate-left','Khôi phục'),'<hr>',b('hard','fa-trash','Xóa cứng','','bad'));
+  return it.length?`<details class="more"><summary class="btn-ico" title="Thao tác"><i class="fa-solid fa-ellipsis"></i></summary><div class="menu">${it.join('')}</div></details>`:''}
+
+const sortTh=(k,l)=>{const on=FILTER.sort===k,d=FILTER.dir==='desc';return`<th aria-sort="${on?(d?'descending':'ascending'):'none'}"><button type="button" class="thsort${on?' on':''}" data-act="sort" data-k="${k}" title="Sắp xếp theo ${l.toLowerCase()}">${l}<i class="fa-solid ${on?(d?'fa-sort-down':'fa-sort-up'):'fa-sort'}"></i></button></th>`};
+// Thẻ số liệu dùng chung (màn Nhân sự và đầu Hồ sơ): [nhãn, giá trị, icon, màu, 'txt' nếu giá trị là chữ]
+const statRow=a=>`<div class="stats">${a.map(([l,n,ic,c,t])=>`<div class="stat${t?' txt':''}"><span class="stat-ico ${c}"><i class="fa-solid ${ic}"></i></span><div><b>${n}</b><small>${l}</small></div></div>`).join('')}</div>`;
+const statCards=st=>st?statRow([['Tổng nhân sự',st.total,'fa-users',''],['Đang hoạt động',st.active,'fa-circle-check','green'],['Đã khóa',st.locked,'fa-lock','orange'],['Quản lý nhân sự',st.managers,'fa-user-tie','violet']]):'';
+async function usersView(){
+  const fresh=FILTER.fresh,[res,st]=await Promise.all([API.listUsers({...FILTER,fresh}),API.userStats().catch(()=>null)]),rows=res.items,sa=ME.role==='SUPER_ADMIN';delete FILTER.fresh;
+  shell(`<h2>Nhân sự</h2>${statCards(st)}<div class="bar"><input id="q" placeholder="Tìm họ tên, tài khoản, email, SĐT, CCCD" value="${esc(FILTER.q)}"><select id="fr"><option value="">Mọi vai trò</option>${Object.entries(RL).map(([k,v])=>`<option value="${k}" ${FILTER.role===k?'selected':''}>${v}</option>`).join('')}</select><select id="fs"><option value="">Mọi trạng thái</option>${Object.entries(ST).map(([k,v])=>`<option value="${k}" ${FILTER.status===k?'selected':''}>${v}</option>`).join('')}</select><div class="sp"></div><button class="pri" data-act="newu">Thêm người dùng</button></div>
+  <div class="card"><div class="tbl-wrap"><table><tr>${[['name','Nhân sự'],['role','Vai trò'],['status','Trạng thái'],['phone','Số điện thoại'],['email','Email']].map(([k,l])=>sortTh(k,l)).join('')}<th></th></tr>${rows.map(r=>{const m=API.canManage(ME,r),self=r.id===ME.id,lim=r.limited;return`<tr><td class="cell-head"><div class="usercell">${avaBox(r.profilePictureFileId,r.fullName||r.username)}<div><div class="cell-main">${esc(r.fullName)}${lim?' <span class="tag slate">Chỉ xem</span>':''}</div>${lim?'':`<div class="cell-sub">@${esc(r.username)}</div>`}</div></div></td><td data-l="Vai trò"><span class="tag ${r.role}">${RL[r.role]}</span></td><td data-l="Trạng thái">${lim?'—':`<span class="tag ${r.status}">${ST[r.status]}</span>`}</td><td data-l="Điện thoại">${lim?'—':esc(r.phone)||'—'}</td><td data-l="Email" class="wrapany">${lim?'—':esc(r.email)||'—'}</td><td class="acts"><button class="sm" data-go="users/${r.id}">Xem</button>${lim?'':userMenu(r,m,self,sa)}</td></tr>`}).join('')||'<tr><td colspan="6">Không có kết quả.</td></tr>'}</table></div>${pager(res,'users')}</div>`);FILTER.page=res.page;
+  const re=()=>{FILTER={q:$('#q').value,role:$('#fr').value,status:$('#fs').value,page:1,sort:FILTER.sort,dir:FILTER.dir};usersView().then(()=>{const q=$('#q');q.focus();q.setSelectionRange(99,99)}).catch(x=>toast(x.message,'err'))};
+  $('#q').oninput=()=>{clearTimeout(re.h);re.h=setTimeout(re,250)};$('#fr').onchange=re;$('#fs').onchange=re}
+async function auditView(){
+  const r=await API.audit(AF),mx=API.maxDate('fromDate');AF.page=r.page;
+  shell(`<h2>Nhật ký thao tác</h2><div class="bar"><input id="aq" placeholder="Tìm trong mô tả" value="${esc(AF.q)}"><select id="aa"><option value="">Mọi hành động</option>${r.actions.map(a=>`<option ${AF.action===a?'selected':''}>${esc(a)}</option>`).join('')}</select><select id="au"><option value="">Mọi người thực hiện</option>${r.people.map(x=>`<option value="${esc(x.id)}" ${AF.user===x.id?'selected':''}>${esc(x.username)}</option>`).join('')}</select><label>Từ <input id="af" type="date" ${mx?`max="${mx}"`:''} value="${esc(AF.from)}"></label><label>đến <input id="at" type="date" ${mx?`max="${mx}"`:''} value="${esc(AF.to)}"></label><button id="ar">Xóa lọc</button></div><div class="card"><div class="tbl-wrap"><table class="audit"><tr><th>Thời gian</th><th>Hành động</th><th>Người thực hiện</th><th>Người bị tác động</th><th>Mô tả</th></tr>${r.items.map(a=>`<tr><td data-l="Thời gian">${dtc(a.createdAt)}</td><td data-l="Hành động"><span class="tag act ${actCls(a.action)}">${esc(a.action)}</span></td><td data-l="Người thực hiện">${esc(a.actorUsername)||'—'}</td><td data-l="Người bị tác động">${esc(a.targetUsername)||'—'}</td><td data-l="Mô tả">${esc(a.description)}</td></tr>`).join('')||'<tr><td colspan="5">Không có kết quả.</td></tr>'}</table></div>${pager(r,'audit')}</div>`);
+  const re=fq=>{const n={q:$('#aq').value,action:$('#aa').value,user:$('#au').value,from:$('#af').value,to:$('#at').value};
+    if(n.from&&n.to&&n.from>n.to)return toast('Từ ngày phải trước hoặc bằng Đến ngày','warn');
+    AF={...n,page:1};auditView().then(()=>{if(fq){const q=$('#aq');q.focus();q.setSelectionRange(99,99)}}).catch(x=>toast(x.message,'err'))};
+  $('#aq').oninput=()=>{clearTimeout(re.h);re.h=setTimeout(()=>re(true),250)};['#aa','#au','#af','#at'].forEach(k=>$(k).onchange=()=>re());
+  $('#ar').onclick=()=>{AF={q:'',action:'',user:'',from:'',to:'',page:1};route()}}
+
+// ---- Cấu hình HRX: thông tin đơn vị và tham số pháp lý ----
+async function companyView(){
+ if(ME.role!=='SUPER_ADMIN')return toast('Chỉ SUPER_ADMIN được truy cập','err');
+ const old=(await HX.load('company')).find(x=>x.id==='company')||{id:'company',workRegion:'I',workdaysMode:'CALENDAR_MINUS_WEEKENDS'};
+ shell(`<h2>Thông tin đơn vị</h2><div class="card"><p class="muted">Dữ liệu này dùng cho số hợp đồng, văn bản và cấu hình lương.</p><form id="companyForm" class="fgrid">
+ <label>Tên đơn vị<input name="name" required value="${esc(old.name||'')}"></label><label>Mã số thuế<input name="taxCode" inputmode="numeric" value="${esc(old.taxCode||'')}"></label>
+ <label>Địa chỉ<input name="address" value="${esc(old.address||'')}"></label><label>Người đại diện<input name="representative" value="${esc(old.representative||'')}"></label>
+ <label>Vùng lương tối thiểu<select name="workRegion">${['I','II','III','IV'].map(x=>`<option ${old.workRegion===x?'selected':''}>${x}</option>`).join('')}</select></label>
+ <label>Mã đơn vị BHXH<input name="socialInsuranceCode" value="${esc(old.socialInsuranceCode||'')}"></label><label>Tên viết tắt<input name="shortName" value="${esc(old.shortName||'')}"></label>
+ <label>Cách tính ngày công chuẩn<select name="workdaysMode"><option value="CALENDAR_MINUS_WEEKENDS" ${old.workdaysMode==='CALENDAR_MINUS_WEEKENDS'?'selected':''}>Ngày trong tháng trừ ngày nghỉ tuần</option><option value="26" ${old.workdaysMode==='26'?'selected':''}>Cố định 26 ngày</option><option value="22" ${old.workdaysMode==='22'?'selected':''}>Cố định 22 ngày</option></select></label>
+ <div class="full"><button class="pri">Lưu thông tin đơn vị</button></div></form></div>`);
+ $('#companyForm').onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(e.currentTarget));d.id='company';d.updated=new Date().toISOString();d.by=ME.username;await HX.save('company',null,d);await API.logEvent('UPDATE_HX_COMPANY',null,'Cập nhật thông tin đơn vị');toast('Đã lưu thông tin đơn vị')}catch(x){toast(x.message,'err')}};
+}
+async function policyView(){
+ if(ME.role!=='SUPER_ADMIN')return toast('Chỉ SUPER_ADMIN được truy cập','err');
+ let rows=await HX.load('policy');
+ if(!rows.length){rows=(window.POLICY_SEED||[]).map(x=>({...x,id:x.effectiveFrom,updated:new Date().toISOString(),by:ME.username}));for(const r of rows)await HX.save('policy',null,r)}
+ shell(`<h2>Tham số pháp lý</h2><div class="card"><p class="muted">Mỗi dòng có ngày hiệu lực riêng. Kiểm tra số liệu và nguồn pháp lý trước khi dùng tính lương thực tế.</p><div class="table-wrap"><table><thead><tr><th>Hiệu lực từ</th><th>Đến</th><th>Lương cơ sở</th><th>Lương tối thiểu I</th><th>II</th><th>III</th><th>IV</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.effectiveFrom)}</td><td>${esc(r.effectiveTo||'')}</td><td>${esc(r.baseSalary)}</td><td>${esc(r.minimumWageI)}</td><td>${esc(r.minimumWageII)}</td><td>${esc(r.minimumWageIII)}</td><td>${esc(r.minimumWageIV)}</td><td><button class="sm" data-policy-edit="${esc(r.id)}">Sửa</button></td></tr>`).join('')}</tbody></table></div><button class="pri" id="policyAdd">Thêm mốc hiệu lực</button></div>`);
+ const edit=async r=>{const d=await new Promise(resolve=>form('Tham số pháp lý',[{k:'effectiveFrom',l:'Hiệu lực từ',t:'date',r:1},{k:'effectiveTo',l:'Hiệu lực đến',t:'date'},{k:'baseSalary',l:'Lương cơ sở',t:'number',r:1},{k:'minimumWageI',l:'Lương tối thiểu vùng I',t:'number'},{k:'minimumWageII',l:'Lương tối thiểu vùng II',t:'number'},{k:'minimumWageIII',l:'Lương tối thiểu vùng III',t:'number'},{k:'minimumWageIV',l:'Lương tối thiểu vùng IV',t:'number'}],r||{},resolve));if(!d)return;try{d.id=d.effectiveFrom;d.updated=new Date().toISOString();d.by=ME.username;await HX.save('policy',null,d);await API.logEvent('UPDATE_HX_POLICY',null,'Cập nhật policy hiệu lực '+d.effectiveFrom);await policyView()}catch(x){toast(x.message,'err')}};
+ $('#policyAdd').onclick=()=>edit(null);document.querySelectorAll('[data-policy-edit]').forEach(b=>b.onclick=()=>edit(rows.find(r=>r.id===b.dataset.policyEdit)));
+}
+
+// ---- Hợp đồng & khách hàng (code ở js/hopdong/, giao diện dùng lại các helper bên trên) ----
+// Cầu nối cho js/hopdong/contract-api.js: người đang đăng nhập (đồng bộ / kèm họ tên).
+window.HD_ME=()=>ME?{id:ME.id,username:ME.username,role:ME.role,fullName:MYNAME[ME.id]||''}:null;
+window.HD_WHO=()=>API.whoami();
+window.HD_LOG=(action,target,desc)=>API.logEvent(action,target,desc);   // ghi nhật ký
+window.HD_CAN_ASSIGN=id=>API.canAssign(id);
+window.HRX={me:()=>ME?{id:ME.id,username:ME.username,role:ME.role,fullName:MYNAME[ME.id]||''}:null,who:()=>API.whoami(),log:(action,target,desc)=>API.logEvent(action,target,desc),staff:()=>API.staffList(),canManage:id=>API.canAssign(id),isMgr:()=>!!ME&&ME.role!=='EMPLOYEE',isSA:()=>!!ME&&ME.role==='SUPER_ADMIN',profile:id=>API.getUser(id)};
+// Chuyển màn của module hợp đồng (module gọi go('list'|'new'|'customers', id))
+const go=(t,id)=>{location.hash=t==='new'?'/contracts/'+(id||'new'):t==='customers'?'/customers':'/contracts'};
+// Nạp dữ liệu hợp đồng/khách hàng (đọc lại nếu cũ hơn maxAge ms); lỗi thì hiện khung báo lỗi có nút thử lại
+async function hdLoad(title,maxAge){
+  try{await ContractAPI.ensure(maxAge);return true}
+  catch(x){shell(`<h2>${esc(title)}</h2><div class="card"><div class="err">Không tải được dữ liệu hợp đồng: ${esc(x.message)}</div><button class="pri" onclick="route()">Thử lại</button></div>`);return false}}
+async function contractsView(id){
+  if(!await hdLoad('Hợp đồng',id?6e5:6e4))return;
+  if(id&&id!=='new'&&!ContractAPI.get(id))return shell(`<h2>Hợp đồng</h2><div class="card">${empty('fa-file-circle-xmark','Không tìm thấy hợp đồng','Hợp đồng có thể đã bị xóa.','<button class="pri" data-go="contracts">Về danh sách</button>')}</div>`);
+  shell('<div class="hd" id="hd"></div>');
+  if(id){$('.view').classList.add('wide');ModContract.mount($('#hd'),id==='new'?null:id)}else ModList.mount($('#hd'))}
+async function customersView(){
+  if(!await hdLoad('Khách hàng',6e4))return;
+  shell('<div class="hd" id="hd"></div>');ModCustomer.mount($('#hd'))}
+// Tab "Hợp đồng" trong hồ sơ nhân sự: các hợp đồng nhân sự này đã lập (dữ liệu đã nạp ở profileView)
+function empContracts(id){
+  const rows=ContractAPI.byEmployee(id).sort((a,b)=>(b.updated||'').localeCompare(a.updated||'')),self=id===ME.id,sum=rows.reduce((t,c)=>t+calc(c).total,0);
+  const head=`<div class="sechd"><h3><i class="fa-solid fa-file-contract"></i>Hợp đồng đã lập</h3>${chips([`<b>${rows.length}</b> hợp đồng`,`Tổng giá trị <b>${vnd(sum)}</b> VNĐ`])}<div class="sp"></div>${self?'<button class="pri" data-go="contracts/new"><i class="fa-solid fa-plus"></i>Tạo hợp đồng</button>':''}</div>`;
+  if(!rows.length)return`<div class="card">${head}${empty('fa-file-contract','Chưa lập hợp đồng nào',self?'Các hợp đồng bạn lập sẽ hiện ở đây.':'Nhân sự này chưa lập hợp đồng nào.')}</div>`;
+  return`<div class="card">${head}<div class="tbl-wrap"><table><tr><th>Số hợp đồng</th><th>Bên A (khách hàng)</th><th>Phần mềm</th><th class="num">Tổng giá trị (VNĐ)</th><th>Cập nhật</th><th></th></tr>
+    ${rows.map(c=>`<tr><td class="cell-head" data-l="Số hợp đồng"><div class="cell-main">${esc(c.so)||'—'}</div></td><td data-l="Bên A (khách hàng)">${esc(c.benA?.name)||'—'}</td><td data-l="Phần mềm">${esc(c.sw)||'—'}</td><td data-l="Tổng giá trị" class="num">${vnd(calc(c).total)}</td><td data-l="Cập nhật">${c.updated?dtc(c.updated):'—'}</td><td class="acts"><button class="sm" data-go="contracts/${esc(c.id)}">${ContractAPI.canEdit(c)?'Sửa':'Xem'}</button></td></tr>`).join('')}</table></div></div>`}
+
+const reload=()=>route();
+const A={
+  async dir(){
+    const h=await Store.curDir(),d=document.createElement('dialog');
+    d.innerHTML=`<h3>Thư mục uploads</h3><p>Hiện tại: <b>${h?esc(h.name):'chưa chọn'}</b></p><p style="color:var(--mut)">Chọn đúng thư mục <code>uploads/</code> của dự án. Nếu đổi sang thư mục khác, file đã lưu ở thư mục cũ sẽ không đọc được cho tới khi bạn chép sang thư mục mới.</p><div class="err"></div><div class="row"><button type="button" data-x>Đóng</button><button class="pri" data-pick>${h?'Chọn thư mục khác':'Chọn thư mục'}</button></div>`;
+    document.body.append(d);d.showModal();d.onclose=()=>d.remove();d.querySelector('[data-x]').onclick=()=>d.close();
+    d.querySelector('[data-pick]').onclick=async()=>{try{const n=await Store.pickDir();toast(n.name==='uploads'?'Đã chọn thư mục uploads':'Đã chọn "'+n.name+'" (lưu ý: thường nên là thư mục tên uploads)');d.close()}catch(x){if(x.name!=='AbortError')d.querySelector('.err').textContent=x.message}}},
+  pg(e){if(e.w==='contracts'||e.w==='customers')return HD_PAGE(e.w,+e.p); // danh sách hợp đồng/khách hàng phân trang tại chỗ, không dựng lại khung
+    (e.w==='users'?FILTER:AF).page=+e.p;route()},
+  tlgo(e){const el=document.getElementById(e.t);if(el)el.scrollBy({left:+e.d*el.clientWidth*.8,behavior:'smooth'})},
+  sort(e){if(FILTER.sort===e.k)FILTER.dir=FILTER.dir==='asc'?'desc':'asc';else{FILTER.sort=e.k;FILTER.dir='asc'}FILTER.page=1;FILTER.fresh=true;route()},
+  logout(){API.logout();ME=null;ContractAPI.reset();home();boot()},
+  menu(){document.body.classList.toggle('nav-open')},
+  pw(){form('Đổi mật khẩu',[{k:'o',l:'Mật khẩu hiện tại',t:'password',r:1},{k:'n',l:'Mật khẩu mới (≥ 8 ký tự)',t:'password',r:1}],{},async d=>{await API.changePassword(d.o,d.n);toast('Đã đổi mật khẩu');ME=await API.me();route()},'Đổi mật khẩu')},
+  newu(){const f=[{k:'username',l:'Tên đăng nhập',r:1,sec:'Tài khoản'},{k:'password',l:'Mật khẩu tạm (≥ 8 ký tự)',t:'password',r:1},{k:'role',l:'Vai trò',t:'select',o:Object.entries(RL).filter(([k])=>ME.role==='SUPER_ADMIN'||k!=='SUPER_ADMIN')},...PROFILE_F.map((x,i)=>i?x:{...x,sec:'Thông tin cá nhân'}),{k:'avatar',l:'Chọn ảnh (JPG/PNG/WebP ≤2MB)',t:'file',a:IMG,r:1,full:1,sec:'Ảnh đại diện'}];;
+    form('Thêm người dùng',f,{gender:'Nam',nationality:'Việt Nam'},async d=>{const{avatar,kids,...x}=d;await API.createUser(x,avatar,kids);toast('Đã tạo. Người dùng phải đổi mật khẩu khi đăng nhập lần đầu.');route()},'Tạo',kidsHook())},
+  editp(e){const mng=API.canManage(ME,VIEW.d.user);form('Sửa hồ sơ',[...(mng?PROFILE_F:CONTACT_F),{k:'avatar',l:'Ảnh đại diện mới (tuỳ chọn)',t:'file',a:IMG}],VIEW.d.profile,async d=>{const{avatar,...x}=d;await API.saveProfile(e.id,x,avatar);route()})},
+  add(e){const c=CHILD[e.kind];form('Thêm '+c.t.toLowerCase(),c.f,{isCurrent:'true'},async d=>{const{file,...x}=d;await API.addChild(e.id,e.kind,x,file);route()},'Thêm')},
+  view(e){const r=VIEW.d[e.kind].find(x=>x.id===e.id),c=CHILD[e.kind],d=document.createElement('dialog');
+    d.innerHTML=`<h3>Chi tiết ${c.t.toLowerCase()}</h3>${kv(r,c.f.filter(f=>f.t!=='file').map(f=>[f.k,f.l]))}<div class="row"><button>Đóng</button></div>`;document.body.append(d);d.showModal();d.onclose=()=>d.remove();d.querySelector('button').onclick=()=>d.close()},
+  editc(e){const c=CHILD[e.kind],r=VIEW.d[e.kind].find(x=>x.id===e.rid);
+    form('Sửa '+c.t.toLowerCase(),c.f.map(f=>f.t==='file'?{...f,l:f.l.replace(/^File/,'File mới, để trống để giữ file cũ')}:f),r,async d=>{const{file,...x}=d;await API.updateChild(e.id,e.kind,e.rid,x,file);route()})},
+  addf(e){form('Thêm người thân',FAM_F,{},async d=>{const{linkId,...x}=d;await API.addFamily(e.id,x,linkId);route()},'Thêm',famHook(e.id))},
+  editf(e){const r=VIEW.d.family.find(x=>x.id===e.rid),hide=r.linked&&r.restricted;
+    form('Sửa người thân',FAM_F.filter(f=>!(hide&&FAM_HIDE.includes(f.k))),r,async d=>{await API.updateFamily(e.id,e.rid,d);route()},'Lưu',r.linked?{top:'<p style="color:var(--mut)">Người thân là nhân sự trong hệ thống. Sửa thông tin khác ngoài "Mối quan hệ" sẽ chuyển thành bản nhập tay (không còn đồng bộ với hồ sơ nhân sự).</p>',init(){},collect(){}}:undefined)},
+  viewf(e){const r=VIEW.d.family.find(x=>x.id===e.rid),d=document.createElement('dialog');
+    d.innerHTML=`<h3>Chi tiết người thân</h3><div class="kv"><span>Mối quan hệ</span><span>${esc(r.relation)}</span>${FAM_F.filter(f=>f.k!=='relation').map(f=>`<span>${f.l}</span><span>${r.linked&&r.restricted&&FAM_HIDE.includes(f.k)?'<i style="color:var(--mut)">Ẩn (chỉ quản lý được xem)</i>':esc(r[f.k])||'—'}</span>`).join('')}${r.linked&&r.position!==undefined?`<span>Chức vụ</span><span>${esc(r.position)||'—'}</span>`:''}</div>${r.linked?`<p style="color:var(--mut)">Thông tin lấy từ hồ sơ nhân sự và tự cập nhật khi hồ sơ thay đổi.</p>`:''}<div class="row"><button>Đóng</button></div>`;
+    document.body.append(d);d.showModal();d.onclose=()=>d.remove();d.querySelector('button').onclick=()=>d.close()},
+  async delf(e){if(await ask('Xóa người thân','Xóa người thân này?',{ok:'Xóa'})){await API.delFamily(e.id,e.rid);route()}},
+  async delc(e){if(await ask('Xóa bản ghi','Xóa bản ghi này?',{ok:'Xóa'})){await API.delChild(e.id,e.kind,e.rid);route()}},
+  async open(e){window.open(await API.fileUrl(e.id),'_blank')},
+  async lock(e){await API.setStatus(e.id,e.s);route()},
+  reset(e){form('Đặt lại mật khẩu',[{k:'pw',l:'Mật khẩu mới (≥ 8 ký tự)',t:'text',r:1}],{},async d=>{await API.resetPassword(e.id,d.pw);toast('Đã đặt lại mật khẩu. Người dùng phải đổi khi đăng nhập lần tới.')},'Đặt lại')},
+  async promote(e){if(await ask('Nâng lên Quản lý nhân sự','Nâng người này lên Quản lý nhân sự? Sau đó bạn không thể hạ lại hay xóa họ.',{ok:'Nâng lên'})){await API.setRole(e.id,'HR_MANAGER');route()}},
+  async del(e){if(await ask('Xóa tài khoản','Xóa mềm tài khoản này?',{ok:'Xóa'})){await API.remove(e.id,false);route()}},
+  async hard(e){if(await ask('Xóa cứng tài khoản','XÓA CỨNG sẽ xóa vĩnh viễn hồ sơ và file. Tiếp tục?',{ok:'Xóa vĩnh viễn',danger:true})){await API.remove(e.id,true);route()}},
+  async restore(e){await API.restore(e.id);route()},
+  role(e){form('Đổi vai trò',[{k:'role',l:'Vai trò',t:'select',o:Object.entries(RL)}],{role:e.r},async d=>{await API.setRole(e.id,d.role);route()})}};
+
+document.addEventListener('keydown',e=>{const i=e.target.closest&&e.target.closest('[data-pgin]');if(!i||e.key!=='Enter')return;
+  const n=parseInt(i.value,10);
+  if(i.dataset.pgin==='contracts'||i.dataset.pgin==='customers'){if(!isNaN(n))HD_PAGE(i.dataset.pgin,n);return}
+  if(!isNaN(n))(i.dataset.pgin==='users'?FILTER:AF).page=n; // API tự kẹp về trang cuối nếu vượt quá
+  route()});
+document.addEventListener('click',e=>{
+  const g=e.target.closest('[data-go]'),t=e.target.closest('[data-tab]'),a=e.target.closest('[data-act]');
+  if(e.target.closest('nav a'))document.body.classList.remove('nav-open');
+  if(g){location.hash='/'+g.dataset.go;return}
+  if(t){if(!switchTab(t.dataset.tab,t.dataset.id)){TAB=t.dataset.tab;route()}return}
+  if(a&&A[a.dataset.act])run(()=>A[a.dataset.act]({...a.dataset}))});
+document.addEventListener('click',e=>{const s=e.target.closest('details.more>summary');
+  document.querySelectorAll('details.more[open]').forEach(d=>{if(!d.contains(e.target)||e.target.closest('[data-act]'))d.open=false});
+  if(s){const r=s.getBoundingClientRect(),m=s.nextElementSibling,w=Math.min(220,innerWidth-16);
+    m.style.right='auto';m.style.left=Math.max(8,Math.min(r.right-w,innerWidth-w-8))+'px';m.style.top=r.bottom+4+'px';
+    requestAnimationFrame(()=>{const h=m.offsetHeight;if(r.bottom+4+h>innerHeight-8&&r.top-4-h>8)m.style.top=r.top-4-h+'px'})}});
+window.addEventListener('scroll',()=>document.querySelectorAll('details.more[open]').forEach(d=>d.open=false),true);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classList.remove('nav-open')});
+async function route(){
+  if(!ME)return loginView();if(ME.mustChangePassword)return forceChange();
+  const[,page,id]=location.hash.split('/'),sk=setTimeout(()=>{const v=$('.view');if(v)v.innerHTML=SKEL},150);
+  try{await run(async()=>{if(page==='users'&&id)await profileView(id);else if(page==='users')await usersView();else if(page==='audit')await auditView();else if(page==='contracts')await contractsView(id);else if(page==='customers')await customersView();else if(page==='company')await companyView();else if(page==='policy')await policyView();else await profileView(ME.id)})}finally{clearTimeout(sk)}}
+window.addEventListener('hashchange',()=>{TAB='profile';route()});
+async function boot(){
+  try{await API.seed();ME=await API.me();route()}
+  catch(x){$('#app').innerHTML=`<div class="card login"><h2>Không kết nối được dữ liệu</h2><p>${esc(x.message)}</p><button class="pri" onclick="location.reload()">Thử lại</button></div>`}}
+boot();
