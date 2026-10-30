@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 
 function setup() {
-  const tables = new Map(); let nextId = 1;
+  const tables = new Map(); let nextId = 1, readCount = 0;
   const document = {
     createElement() {
       const field = { value: '' };
@@ -16,7 +16,7 @@ function setup() {
   };
   const forms = new Map();
   const KioStore = {
-    async listRows(table) { return (tables.get(table) || []).map(x => ({ ...x })); },
+    async listRows(table) { readCount++; return (tables.get(table) || []).map(x => ({ ...x })); },
     invalidateTable() {},
   };
   let lockChain = Promise.resolve();
@@ -39,7 +39,7 @@ function setup() {
   };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/common/hx-store.js'), 'utf8'), ctx);
-  return { HX: window.HX, tables };
+  return { HX: window.HX, tables, reads: () => readCount };
 }
 
 test('HX KIO writes short payload chunks, reads, updates atomically and removes a record', async () => {
@@ -73,4 +73,12 @@ test('HX nextSeq allocates distinct values across 100 concurrent calls using Web
   assert.equal(new Set(values).size, 100);
   assert.equal(Math.min(...values), 1);
   assert.equal(Math.max(...values), 100);
+});
+
+test('HX reuses KIO row index and avoids rescanning the whole table on consecutive saves', async () => {
+  const { HX, reads } = setup();
+  await HX.save('company', null, { id: 'company', name: 'Công ty A', updated: '2026-10-30T01:00:00.000Z' });
+  const scansAfterCreate = reads();
+  await HX.save('company', null, { id: 'company', name: 'Công ty B', updated: '2026-10-30T02:00:00.000Z' });
+  assert.equal(reads(), scansAfterCreate, 'a consecutive update should reuse the cached physical-row index');
 });

@@ -268,6 +268,7 @@ const API=(()=>{
       const{m,t}=await target(id,kind==='positions'||kind==='work'?'manage':'self'),row=(await S.list(KIND[kind])).find(x=>x.id===rid&&x.userId===id);if(!row)E('Không tìm thấy bản ghi');
       await log(m.id,'DELETE_'+kind.toUpperCase(),id,`${m.username} xóa ${kind} (${row.name||row.position||row.company}) của ${t.username}`);
       await dropFile(row.fileId);await S.del(KIND[kind],[rid])},
+    async uploadFile(ownerId,type,file){const m=await need();if(m.role==='EMPLOYEE'){if(type!=='dependents'||ownerId!==m.id)E('Nhân viên chỉ được tải giấy tờ người phụ thuộc của chính mình')}else if(ownerId!==m.id)await target(ownerId,'manage');if(!['labor_contracts','documents','leave','dependents'].includes(type))E('Loại file không được hỗ trợ');return saveFile(file,ownerId,type)},
     async fileUrl(fid){
       const m=await need(),f=(await S.list(T.f)).find(x=>x.id===fid);if(!f)E('Không tìm thấy file');
       const o=(await S.list(T.u)).find(u=>u.id===f.ownerId);if(!o)E('Bạn không có quyền xem file');

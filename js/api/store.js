@@ -59,3 +59,6 @@ const Store=(()=>{
       if(srv){try{const fd=new FormData();fd.append('action','del');fd.append('path',path);await upCall(fd)}catch(e){}return}
       try{const{d,name}=await this._walk(path,false);await d.removeEntry(name)}catch(e){}}
   }})();
+
+// HX modules access Store through the shared browser global.
+window.Store=Store;

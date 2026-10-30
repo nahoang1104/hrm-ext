@@ -34,18 +34,20 @@ window.ModList=(function(){
   return`<div class="card"><div class="tbl-wrap"><table><tr><th>Số hợp đồng</th><th>Bên A (khách hàng)</th><th>Phần mềm</th><th class="num">Tổng giá trị (VNĐ)</th><th>Người lập</th><th>Cập nhật</th><th></th></tr>
    ${r.items.map(rowHtml).join('')||'<tr><td colspan="7">Không có kết quả.</td></tr>'}</table></div>${pager(r,'contracts')}</div>`}
  const drawTable=()=>{el.querySelector('#hdtbl').innerHTML=table()};
+ const hydrateAvatars=()=>{const nodes=[...el.querySelectorAll('#hdtbl .usercell[data-uid]')];nodes.forEach(async n=>{if(n.dataset.avatarLoaded)return;n.dataset.avatarLoaded='1';const url=window.HD_AVATAR?await HD_AVATAR(n.dataset.uid):'';if(url&&n.isConnected){const box=n.querySelector('.ava-box');if(box&&!box.querySelector('img'))box.insertAdjacentHTML('afterbegin',`<img src="${esc(url)}" alt="" onerror="this.remove()">`)}})};
  function mount(el_){
   el=el_;
   el.innerHTML=`<h2>Hợp đồng</h2><div id="hdstats">${stats()}</div>
    <div class="bar"><input id="hq" placeholder="Tìm số hợp đồng, khách hàng, phần mềm, nhân viên" value="${esc(F.q)}">${mgr()?`<select id="he" title="Lọc theo nhân viên đã lập">${empOptions()}</select>`:''}
    <div class="sp"></div><button data-a="reload" title="Tải lại dữ liệu mới nhất"><i class="fa-solid fa-rotate"></i>Tải lại</button><button class="pri" data-a="new"><i class="fa-solid fa-plus"></i>Tạo hợp đồng</button></div>
    <div id="hdtbl">${table()}</div>`;
-  const re=()=>{F.q=el.querySelector('#hq').value;F.emp=mgr()?el.querySelector('#he').value:'';F.page=1;drawTable()};
+  hydrateAvatars();
+  const re=()=>{F.q=el.querySelector('#hq').value;F.emp=mgr()?el.querySelector('#he').value:'';F.page=1;drawTable();hydrateAvatars()};
   el.querySelector('#hq').oninput=()=>{clearTimeout(re.h);re.h=setTimeout(re,200)};if(mgr())el.querySelector('#he').onchange=re;
-  HDUI.pageHandlers.contracts=p=>{F.page=p;drawTable()};
+  HDUI.pageHandlers.contracts=p=>{F.page=p;drawTable();hydrateAvatars()};
   el.onclick=async e=>{const b=e.target.closest('button[data-a]');if(!b)return;const a=b.dataset.a,c=b.dataset.id&&ContractAPI.get(b.dataset.id);
    if(a==='new')return go('new');
-   if(a==='reload')return run(async()=>{await ContractAPI.boot();mount(el);toast('Đã tải lại danh sách')});
+   if(a==='reload')return run(async()=>{ContractAPI.reset();await ContractAPI.boot();mount(el);toast('Đã tải lại danh sách')});
    if(!c)return toast('Không tìm thấy hợp đồng (có thể đã bị xóa)','warn');
    if(a==='edit')return go('new',c.id);
    if(a==='dup')return run(async()=>{const n=JSON.parse(JSON.stringify(c));n.id=uid('hd');n.so+=' (bản sao)';

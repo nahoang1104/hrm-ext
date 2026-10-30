@@ -9,7 +9,7 @@ const CHILD={
   degrees:{t:'Bằng cấp',f:[{k:'name',l:'Tên bằng',r:1},{k:'major',l:'Chuyên ngành'},{k:'school',l:'Trường'},{k:'issuedDate',l:'Ngày cấp',t:'date'},{k:'file',l:'File (JPG/PNG/WebP/PDF ≤5MB)',t:'file',a:DOC}],c:['name','major','school','issuedDate']},
   certificates:{t:'Chứng chỉ',f:[{k:'name',l:'Tên chứng chỉ',r:1},{k:'issuer',l:'Nơi cấp'},{k:'certificateNumber',l:'Số hiệu'},{k:'issuedDate',l:'Ngày cấp',t:'date'},{k:'expiredDate',l:'Hết hạn',t:'date'},{k:'file',l:'File (JPG/PNG/WebP/PDF ≤5MB)',t:'file',a:DOC}],c:['name','issuer','certificateNumber','issuedDate','expiredDate']}};
 const FAM_F=[{k:'relation',l:'Mối quan hệ',r:1,dl:['Cha','Mẹ','Vợ','Chồng','Con','Anh','Chị','Em','Ông','Bà','Cháu','Chú','Bác','Cô','Dì','Cậu','Người thân']},{k:'fullName',l:'Họ tên',r:1},{k:'dateOfBirth',l:'Ngày sinh',t:'date'},{k:'gender',l:'Giới tính',t:'select',o:[['','—'],...GENDER]},{k:'nationality',l:'Quốc tịch'},{k:'citizenID',l:'CCCD',n:1},{k:'address',l:'Địa chỉ',full:1},{k:'email',l:'Email',t:'email'},{k:'phone',l:'Điện thoại',n:1}];
-const PROFILE_F=[{k:'fullName',l:'Họ tên',r:1},{k:'gender',l:'Giới tính',t:'select',o:GENDER},{k:'nationality',l:'Quốc tịch',r:1},{k:'dateOfBirth',l:'Ngày sinh',t:'date',r:1},{k:'citizenID',l:'CCCD',r:1,n:1},{k:'phone',l:'Điện thoại',r:1,n:1},{k:'email',l:'Email',t:'email',r:1},{k:'address',l:'Địa chỉ',full:1},{k:'taxCode',l:'Mã số thuế cá nhân',n:1},{k:'bhxhNo',l:'Số sổ BHXH',n:1},{k:'bankName',l:'Ngân hàng'},{k:'bankAccount',l:'Số tài khoản',n:1},{k:'workRegion',l:'Vùng lương làm việc (I–IV)'}];
+const PROFILE_F=[{k:'fullName',l:'Họ tên',r:1},{k:'gender',l:'Giới tính',t:'select',o:GENDER},{k:'nationality',l:'Quốc tịch',r:1},{k:'dateOfBirth',l:'Ngày sinh',t:'date',r:1},{k:'citizenID',l:'CCCD',r:1,n:1},{k:'phone',l:'Điện thoại',r:1,n:1},{k:'email',l:'Email',t:'email',r:1},{k:'address',l:'Địa chỉ',full:1},{k:'taxCode',l:'Mã số thuế cá nhân',n:1},{k:'bhxhNo',l:'Số sổ BHXH',n:1},{k:'bankName',l:'Ngân hàng'},{k:'bankAccount',l:'Số tài khoản',n:1},{k:'workRegion',l:'Vùng lương làm việc (I–IV)'},{k:'salaryMonthly',l:'Lương cơ bản tháng (VNĐ)',t:'number',n:1}];
 const CONTACT_F=PROFILE_F.filter(f=>['phone','email','address'].includes(f.k));
 let ME=null,TAB='profile',FILTER={q:'',role:'',status:'',page:1,sort:'role',dir:'asc'},AF={q:'',action:'',user:'',from:'',to:'',page:1};
 const pager=(r,w)=>`<div class="bar pager"><span style="color:var(--mut)">Hiển thị dòng ${r.items.length?(r.page-1)*r.pageSize+1:0} - ${(r.page-1)*r.pageSize+r.items.length} · Trang <input class="pgin" type="number" min="1" value="${r.page}" data-pgin="${w}" title="Nhập số trang rồi nhấn Enter"></span><div class="sp"></div>${[['« Đầu',1],['Trước',r.page-1],['Sau',r.page+1],['Cuối »',r.pages]].map(([l,n],i)=>`<button class="sm" data-act="pg" data-w="${w}" data-p="${n}" ${(i<2?r.page<=1:r.page>=r.pages)?'disabled':''}>${l}</button>`).join('')}</div>`;
@@ -72,9 +72,11 @@ async function famAvatars(){
       const url=AVA[fid]||(AVA[fid]=await API.fileUrl(fid));
       if(box.isConnected)box.insertAdjacentHTML('afterbegin',`<img src="${esc(url)}" alt="" onerror="this.remove()">`)}catch{}}))}
 const loadFids=(root=document)=>root.querySelectorAll('[data-fid]').forEach(async i=>{try{i.src=await API.fileUrl(i.dataset.fid)}catch{}});
+// Cache avatar theo user và fileId; tránh đọc hồ sơ/ảnh lặp lại khi chuyển trang hoặc phân trang.
+const HD_AVA_PENDING={};window.HD_AVATAR=async uid=>{if(!uid)return'';if(HD_AVA_PENDING[uid])return HD_AVA_PENDING[uid];HD_AVA_PENDING[uid]=(async()=>{const p=(await API.getUser(uid)).profile||{},fid=p.profilePictureFileId;if(!fid)return'';return AVA[fid]||(AVA[fid]=await API.fileUrl(fid))})();try{return await HD_AVA_PENDING[uid]}catch(e){delete HD_AVA_PENDING[uid];return''}};
 function shell(html){
   document.body.classList.remove('nav-open');
-  const navGroups=[['Cá nhân',[['profile','Hồ sơ cá nhân','fa-id-card',1]]],['Nhân sự',[['users','Nhân sự','fa-users',ME.role!=='EMPLOYEE']]],['Hợp đồng & văn bản',[['contracts','Hợp đồng kinh doanh','fa-file-contract',1],['customers','Khách hàng','fa-building',1]]],['Hệ thống',[['company','Thông tin đơn vị','fa-building-circle-check',ME.role==='SUPER_ADMIN'],['policy','Tham số pháp lý','fa-scale-balanced',ME.role==='SUPER_ADMIN'],['audit','Nhật ký','fa-clock-rotate-left',ME.role==='SUPER_ADMIN']]]].map(([g,items])=>[g,items.filter(n=>n[3])]).filter(([g,items])=>items.length);
+  const navGroups=[['Cá nhân',[['profile','Hồ sơ cá nhân','fa-id-card',1],['my-time','Công của tôi','fa-calendar-check',1],['my-pay','Phiếu lương của tôi','fa-receipt',1]]],['Nhân sự',[['users','Nhân sự','fa-users',ME.role!=='EMPLOYEE'],['dependents','Người phụ thuộc','fa-people-group',1]]],['Hợp đồng & văn bản',[['labor-contracts','Hợp đồng lao động','fa-file-signature',ME.role!=='EMPLOYEE'],['documents','Sổ công văn','fa-folder-open',ME.role!=='EMPLOYEE'],['labor-doc-templates','Soạn văn bản mẫu','fa-file-word',ME.role!=='EMPLOYEE'],['contracts','Hợp đồng kinh doanh','fa-file-contract',1],['customers','Khách hàng','fa-building',1]]],['Chấm công',[['timesheets','Bảng chấm công','fa-calendar-days',ME.role!=='EMPLOYEE'],['leave','Nghỉ phép','fa-plane-departure',1],['shifts','Ca & lịch lễ','fa-clock',ME.role!=='EMPLOYEE']]],['Lương & bảo hiểm',[['payroll','Bảng lương','fa-money-bill-wave',ME.role!=='EMPLOYEE'],['insurance','Báo cáo bảo hiểm','fa-shield-heart',ME.role!=='EMPLOYEE'],['payroll-costs','Chi phí lương & BH','fa-chart-column',ME.role!=='EMPLOYEE']]],['Hệ thống',[['company','Thông tin đơn vị','fa-building-circle-check',ME.role==='SUPER_ADMIN'],['policy','Mức đóng bảo hiểm','fa-scale-balanced',ME.role!=='EMPLOYEE'],['audit','Nhật ký','fa-clock-rotate-left',ME.role==='SUPER_ADMIN']]]].map(([g,items])=>[g,items.filter(n=>n[3])]).filter(([g,items])=>items.length);
   const nav=navGroups.flatMap(x=>x[1]);
   const cur=location.hash.split('/')[1]||'profile',title=(nav.find(n=>n[0]===cur)||nav[0])[1];
   $('#app').innerHTML=`<div class="shell"><nav><div class="brand"><span class="brand-logo"><i class="fa-solid fa-users"></i></span><div><div class="brand-name">HRM</div><div class="brand-sub">Quản lý nhân sự</div></div></div>${navGroups.map(([group,items])=>`<div class="nav-group">${group}</div>${items.map(([k,l,ic])=>`<a data-go="${k}" class="${cur===k?'on':''}"><i class="fa-solid ${ic}"></i>${l}</a>`).join('')}`).join('')}<div class="sp"></div>${Store.upMode==='folder'?'<a data-act="dir"><i class="fa-regular fa-folder-open"></i>Thư mục uploads</a>':''}<a data-act="pw"><i class="fa-solid fa-key"></i>Đổi mật khẩu</a><div class="side-user"><span class="avatar" id="meAva" data-ini="${esc(ME.username.slice(0,2).toUpperCase())}">${esc(ME.username.slice(0,2).toUpperCase())}</span><div><div class="side-user-name">${esc(ME.username)}</div><div class="side-user-role">${RL[ME.role]}</div></div></div><a data-act="logout"><i class="fa-solid fa-right-from-bracket"></i>Đăng xuất</a></nav><div class="scrim" data-act="menu"></div><main><div class="topbar"><button class="hamburger" data-act="menu" aria-label="Mở menu"><i class="fa-solid fa-bars"></i></button><span class="crumb-title">${title}</span><div class="sp"></div><span class="chip"><i class="fa-solid fa-database"></i>Dữ liệu: ${Store.mode==='kio'?'KIO':'Local'}</span><div class="top-user"><span class="avatar" id="topAva" data-ini="${esc(ME.username.slice(0,2).toUpperCase())}">${esc(ME.username.slice(0,2).toUpperCase())}</span><div><b id="topName">${esc(MYNAME[ME.id]||ME.username)}</b><small>@${esc(ME.username)}</small></div></div></div><div class="view">${html}</div></main></div>`;
@@ -150,14 +152,14 @@ async function profileView(id){
   const head=`<div class="card phead">${avaBox(p.profilePictureFileId,p.fullName||u.username,'xl')}<div class="phead-info"><h2>${esc(p.fullName||u.username)}</h2><div class="phead-sub">@${esc(u.username)}</div><div class="phead-tags"><span class="tag ${u.role}">${RL[u.role]}</span><span class="tag ${u.status}">${ST[u.status]}</span></div></div>${mng||self?`<button data-act="editp" data-id="${id}"><i class="fa-solid fa-pen"></i>Sửa hồ sơ</button>`:''}</div>${statRow(summary(d))}`;
   if(TAB==='work')TAB='positions'; // tab cũ đã gộp vào Chức vụ & công tác
   if(!PTABS.some(t=>t[0]===TAB))TAB='profile';
-  shell(`${head}<div class="tabs" id="ptabs">${PTABS.map(([k,l])=>`<a data-tab="${k}" data-id="${id}" class="${TAB===k?'on':''}">${l}</a>`).join('')}</div><div id="pbody">${profileBody(d,id)}</div>`);tlInit()}
-const PTABS=[['profile','Hồ sơ'],['positions','Chức vụ & công tác'],['quals','Bằng cấp & chứng chỉ'],['family','Gia phả'],['contracts','Hợp đồng KD']];
+  shell(`${head}<div class="tabs" id="ptabs">${PTABS.map(([k,l])=>`<a data-tab="${k}" data-id="${id}" class="${TAB===k?'on':''}">${l}</a>`).join('')}</div><div id="pbody">${profileBody(d,id)}</div>`);tlInit();if(TAB==='labor-contracts')ModHDLD.profile(id).then(html=>{const b=$('#pbody');if(b)b.innerHTML=html}).catch(x=>toast(x.message,'err'));else if(TAB==='profile')ModHDLD.alerts(id).then(html=>{const b=$('#pbody');if(b&&html)b.insertAdjacentHTML('afterbegin',html)}).catch(()=>{})}
+const PTABS=[['profile','Hồ sơ'],['positions','Chức vụ & công tác'],['quals','Bằng cấp & chứng chỉ'],['family','Gia phả'],['contracts','Hợp đồng KD'],['labor-contracts','Hợp đồng lao động']];
 // Nội dung của tab hiện tại (dựng riêng để đổi tab không phải tải lại và vẽ lại thẻ tóm tắt)
 function profileBody(d,id){
   const u=d.user,p=d.profile,mng=API.canManage(ME,u),self=ME.id===id,editC=k=>k==='positions'||k==='work'?mng:(mng||self);
   let body,bare=false; // bare: nội dung tự có thẻ riêng
   if(TAB==='profile'){const g=ks=>kv(p,PROFILE_F.filter(f=>ks.includes(f.k)).map(f=>[f.k,f.l]));
-    body=`<div class="pgrid"><div class="card pc-personal"><h3><i class="fa-regular fa-id-card"></i>Thông tin cá nhân</h3>${g(['fullName','dateOfBirth','gender','nationality','citizenID'])}</div><div class="card"><h3><i class="fa-regular fa-address-book"></i>Liên hệ</h3>${g(['phone','email','address'])}</div><div class="card"><h3>Thông tin lương & thanh toán</h3>${g(['taxCode','bhxhNo','bankName','bankAccount','workRegion'])}</div></div>${meter(d,id,editC('degrees'))}`;bare=true}
+    body=`<div class="pgrid"><div class="card pc-personal"><h3><i class="fa-regular fa-id-card"></i>Thông tin cá nhân</h3>${g(['fullName','dateOfBirth','gender','nationality','citizenID'])}</div><div class="card"><h3><i class="fa-regular fa-address-book"></i>Liên hệ</h3>${g(['phone','email','address'])}</div><div class="card"><h3>Thông tin lương & thanh toán</h3>${g(['salaryMonthly','taxCode','bhxhNo','bankName','bankAccount','workRegion'])}</div></div>${meter(d,id,editC('degrees'))}`;bare=true}
   else if(TAB==='family')body=famBody(d,id,editC('family'));
   else if(TAB==='contracts'){bare=true;body=empContracts(id)}
   else if(TAB==='quals'){bare=true;body=['degrees','certificates'].map(k=>qualCard(k,d[k],id,editC(k))).join('')}
@@ -165,7 +167,7 @@ function profileBody(d,id){
   return bare?body:`<div class="card">${body}</div>`}
 // Đổi tab: chỉ thay nội dung bên dưới, giữ nguyên thẻ tóm tắt (không gọi lại API)
 function switchTab(k,id){const pb=$('#pbody'),pt=$('#ptabs');
-  if(k==='contracts')return false; // cần nạp dữ liệu hợp đồng (bất đồng bộ) nên đi đường route()
+  if(k==='contracts'||k==='labor-contracts')return false; // cần nạp dữ liệu hợp đồng bất đồng bộ nên đi đường route()
   if(!pb||!pt||!VIEW.d||VIEW.d.limited||VIEW.id!==id)return false;
   TAB=k;pt.querySelectorAll('a[data-tab]').forEach(a=>a.classList.toggle('on',a.dataset.tab===k));
   pb.innerHTML=profileBody(VIEW.d,id);loadFids(pb);tlInit();return true}
@@ -230,14 +232,7 @@ async function companyView(){
  <div class="full"><button class="pri">Lưu thông tin đơn vị</button></div></form></div>`);
  $('#companyForm').onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(e.currentTarget));d.id='company';d.updated=new Date().toISOString();d.by=ME.username;await HX.save('company',null,d);await API.logEvent('UPDATE_HX_COMPANY',null,'Cập nhật thông tin đơn vị');toast('Đã lưu thông tin đơn vị')}catch(x){toast(x.message,'err')}};
 }
-async function policyView(){
- if(ME.role!=='SUPER_ADMIN')return toast('Chỉ SUPER_ADMIN được truy cập','err');
- let rows=await HX.load('policy');
- if(!rows.length){rows=(window.POLICY_SEED||[]).map(x=>({...x,id:x.effectiveFrom,updated:new Date().toISOString(),by:ME.username}));for(const r of rows)await HX.save('policy',null,r)}
- shell(`<h2>Tham số pháp lý</h2><div class="card"><p class="muted">Mỗi dòng có ngày hiệu lực riêng. Kiểm tra số liệu và nguồn pháp lý trước khi dùng tính lương thực tế.</p><div class="table-wrap"><table><thead><tr><th>Hiệu lực từ</th><th>Đến</th><th>Lương cơ sở</th><th>Lương tối thiểu I</th><th>II</th><th>III</th><th>IV</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.effectiveFrom)}</td><td>${esc(r.effectiveTo||'')}</td><td>${esc(r.baseSalary)}</td><td>${esc(r.minimumWageI)}</td><td>${esc(r.minimumWageII)}</td><td>${esc(r.minimumWageIII)}</td><td>${esc(r.minimumWageIV)}</td><td><button class="sm" data-policy-edit="${esc(r.id)}">Sửa</button></td></tr>`).join('')}</tbody></table></div><button class="pri" id="policyAdd">Thêm mốc hiệu lực</button></div>`);
- const edit=async r=>{const d=await new Promise(resolve=>form('Tham số pháp lý',[{k:'effectiveFrom',l:'Hiệu lực từ',t:'date',r:1},{k:'effectiveTo',l:'Hiệu lực đến',t:'date'},{k:'baseSalary',l:'Lương cơ sở',t:'number',r:1},{k:'minimumWageI',l:'Lương tối thiểu vùng I',t:'number'},{k:'minimumWageII',l:'Lương tối thiểu vùng II',t:'number'},{k:'minimumWageIII',l:'Lương tối thiểu vùng III',t:'number'},{k:'minimumWageIV',l:'Lương tối thiểu vùng IV',t:'number'}],r||{},resolve));if(!d)return;try{d.id=d.effectiveFrom;d.updated=new Date().toISOString();d.by=ME.username;await HX.save('policy',null,d);await API.logEvent('UPDATE_HX_POLICY',null,'Cập nhật policy hiệu lực '+d.effectiveFrom);await policyView()}catch(x){toast(x.message,'err')}};
- $('#policyAdd').onclick=()=>edit(null);document.querySelectorAll('[data-policy-edit]').forEach(b=>b.onclick=()=>edit(rows.find(r=>r.id===b.dataset.policyEdit)));
-}
+
 
 // ---- Hợp đồng & khách hàng (code ở js/hopdong/, giao diện dùng lại các helper bên trên) ----
 // Cầu nối cho js/hopdong/contract-api.js: người đang đăng nhập (đồng bộ / kèm họ tên).
@@ -245,7 +240,7 @@ window.HD_ME=()=>ME?{id:ME.id,username:ME.username,role:ME.role,fullName:MYNAME[
 window.HD_WHO=()=>API.whoami();
 window.HD_LOG=(action,target,desc)=>API.logEvent(action,target,desc);   // ghi nhật ký
 window.HD_CAN_ASSIGN=id=>API.canAssign(id);
-window.HRX={me:()=>ME?{id:ME.id,username:ME.username,role:ME.role,fullName:MYNAME[ME.id]||''}:null,who:()=>API.whoami(),log:(action,target,desc)=>API.logEvent(action,target,desc),staff:()=>API.staffList(),canManage:id=>API.canAssign(id),isMgr:()=>!!ME&&ME.role!=='EMPLOYEE',isSA:()=>!!ME&&ME.role==='SUPER_ADMIN',profile:id=>API.getUser(id)};
+window.HRX={me:()=>ME?{id:ME.id,username:ME.username,role:ME.role,fullName:MYNAME[ME.id]||''}:null,who:()=>API.whoami(),log:(action,target,desc)=>API.logEvent(action,target,desc),staff:()=>API.staffList(),canManage:id=>API.canAssign(id),isMgr:()=>!!ME&&ME.role!=='EMPLOYEE',isSA:()=>!!ME&&ME.role==='SUPER_ADMIN',profile:id=>API.getUser(id),uploadFile:(owner,type,file)=>API.uploadFile(owner,type,file),fileUrl:id=>API.fileUrl(id)};
 // Chuyển màn của module hợp đồng (module gọi go('list'|'new'|'customers', id))
 const go=(t,id)=>{location.hash=t==='new'?'/contracts/'+(id||'new'):t==='customers'?'/customers':'/contracts'};
 // Nạp dữ liệu hợp đồng/khách hàng (đọc lại nếu cũ hơn maxAge ms); lỗi thì hiện khung báo lỗi có nút thử lại
@@ -253,12 +248,12 @@ async function hdLoad(title,maxAge){
   try{await ContractAPI.ensure(maxAge);return true}
   catch(x){shell(`<h2>${esc(title)}</h2><div class="card"><div class="err">Không tải được dữ liệu hợp đồng: ${esc(x.message)}</div><button class="pri" onclick="route()">Thử lại</button></div>`);return false}}
 async function contractsView(id){
-  if(!await hdLoad('Hợp đồng',id?6e5:6e4))return;
+  if(!await hdLoad('Hợp đồng',300000))return;
   if(id&&id!=='new'&&!ContractAPI.get(id))return shell(`<h2>Hợp đồng</h2><div class="card">${empty('fa-file-circle-xmark','Không tìm thấy hợp đồng','Hợp đồng có thể đã bị xóa.','<button class="pri" data-go="contracts">Về danh sách</button>')}</div>`);
   shell('<div class="hd" id="hd"></div>');
   if(id){$('.view').classList.add('wide');ModContract.mount($('#hd'),id==='new'?null:id)}else ModList.mount($('#hd'))}
 async function customersView(){
-  if(!await hdLoad('Khách hàng',6e4))return;
+  if(!await hdLoad('Khách hàng',300000))return;
   shell('<div class="hd" id="hd"></div>');ModCustomer.mount($('#hd'))}
 // Tab "Hợp đồng" trong hồ sơ nhân sự: các hợp đồng nhân sự này đã lập (dữ liệu đã nạp ở profileView)
 function empContracts(id){
@@ -327,8 +322,8 @@ window.addEventListener('scroll',()=>document.querySelectorAll('details.more[ope
 document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classList.remove('nav-open')});
 async function route(){
   if(!ME)return loginView();if(ME.mustChangePassword)return forceChange();
-  const[,page,id]=location.hash.split('/'),sk=setTimeout(()=>{const v=$('.view');if(v)v.innerHTML=SKEL},150);
-  try{await run(async()=>{if(page==='users'&&id)await profileView(id);else if(page==='users')await usersView();else if(page==='audit')await auditView();else if(page==='contracts')await contractsView(id);else if(page==='customers')await customersView();else if(page==='company')await companyView();else if(page==='policy')await policyView();else await profileView(ME.id)})}finally{clearTimeout(sk)}}
+  const routeHash=location.hash,[,page,id]=routeHash.split('/'),sk=setTimeout(()=>{if(location.hash!==routeHash)return;const v=$('.view');if(v&&(!v.innerHTML.trim()||v.innerHTML===SKEL))v.innerHTML=SKEL},150);
+  try{await run(async()=>{if(page==='users'&&id)await profileView(id);else if(page==='users')await usersView();else if(page==='audit')await auditView();else if(page==='contracts')await contractsView(id);else if(page==='customers')await customersView();else if(page==='company')await companyView();else if(page==='policy'){shell(SKEL);await ModPolicy.render()}else if(page==='labor-contracts'){shell(SKEL);await ModHDLD.render()}else if(page==='documents'){shell(SKEL);await ModCongVan.render()}else if(page==='labor-doc-templates'){shell(SKEL);await ModCongVan.templates()}else if(page==='timesheets'){shell(SKEL);await ModGrid.render()}else if(page==='leave'){shell(SKEL);await ModLeave.render()}else if(page==='shifts'){shell(SKEL);await ModShifts.render()}else if(page==='my-time'){shell(SKEL);await ModMe.render()}else if(page==='payroll'||page==='my-pay'){shell(SKEL);await ModPayroll.render()}else if(page==='dependents'){shell(SKEL);await ModP3Extra.dependents()}else if(page==='insurance'){shell(SKEL);await ModP3Extra.insurance()}else if(page==='payroll-costs'){shell(SKEL);await ModP3Extra.costs()}else await profileView(ME.id)})}finally{clearTimeout(sk)}}
 window.addEventListener('hashchange',()=>{TAB='profile';route()});
 async function boot(){
   try{await API.seed();ME=await API.me();route()}

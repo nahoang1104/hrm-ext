@@ -3,7 +3,7 @@
 <title>HRM — Nhân sự & Hợp đồng</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-<link rel="stylesheet" href="css/style.css?v=57"><link rel="stylesheet" href="css/hopdong.css?v=57"><link rel="stylesheet" href="css/hrx.css?v=57"></head>
+<link rel="stylesheet" href="css/style.css?v=78"><link rel="stylesheet" href="css/hopdong.css?v=78"><link rel="stylesheet" href="css/hrx.css?v=78"></head>
 <body><div id="app"></div><div id="toast"></div>
 <script>
 // Mặc định lưu trên KIO (https://kio.dvqt.vn). Thêm ?driver=local để chạy cục bộ bằng IndexedDB, không đụng KIO.
@@ -11,10 +11,12 @@ window.HRM_CONFIG={mode:new URLSearchParams(location.search).get('driver')==='lo
 </script>
 <script src="https://kio.dvqt.vn/list.js"></script>
 <script src="https://kio.dvqt.vn/krud.js"></script>
-<script src="js/api/kio-api.js?v=57"></script><script src="js/api/store.js?v=57"></script><script src="js/api/hr-api.js?v=57"></script>
-<script src="js/common/zip-util.js?v=57"></script><script src="js/common/xlsx-builder.js?v=57"></script><script src="js/common/hx-store.js?v=57"></script><script src="js/luong/policy-seed.js?v=57"></script><script src="js/luong/policy.js?v=57"></script>
+<script src="js/api/kio-api.js?v=78"></script><script src="js/api/store.js?v=78"></script><script src="js/api/hr-api.js?v=78"></script>
+<script src="js/common/zip-util.js?v=78"></script><script src="js/common/xlsx-builder.js?v=78"></script><script src="js/common/hx-store.js?v=78"></script><script src="js/luong/policy-seed.js?v=78"></script><script src="js/luong/policy.js?v=78"></script><script src="js/laodong/ld-api.js?v=78"></script><script src="js/laodong/doc-templates.js?v=78"></script><script src="js/laodong/docx-labor.js?v=78"></script><script src="js/laodong/mod-hdld.js?v=78"></script><script src="js/laodong/mod-congvan.js?v=78"></script>
+<script src="js/chamcong/cc-calc.js?v=78"></script><script src="js/chamcong/cc-api.js?v=78"></script><script src="js/chamcong/mod-grid.js?v=78"></script><script src="js/chamcong/mod-leave.js?v=78"></script><script src="js/chamcong/mod-shifts.js?v=78"></script><script src="js/chamcong/mod-me.js?v=78"></script>
 <!-- Hợp đồng (js/hopdong/): nạp trước app.js để ModList/ModContract/ModCustomer có sẵn khi route chạy. Dùng chung kio-api.js, KIO và tham số ?driver=local với HRM. -->
-<script src="js/hopdong/config.js?v=57"></script><script src="js/hopdong/data-store.js?v=57"></script><script src="js/hopdong/app.core.js?v=57"></script><script src="js/hopdong/doc-style.js?v=57"></script><script src="js/hopdong/data.js?v=57"></script><script src="js/hopdong/doc-builder.js?v=57"></script><script src="js/hopdong/docx-builder.js?v=57"></script><script src="js/hopdong/ui.js?v=57"></script><script src="js/hopdong/contract-api.js?v=57"></script>
-<script src="js/hopdong/mod-list.js?v=57"></script><script src="js/hopdong/mod-contract.js?v=57"></script><script src="js/hopdong/mod-customer.js?v=57"></script>
-<script src="js/app.js?v=57"></script>
+<script src="js/hopdong/config.js?v=78"></script><script src="js/hopdong/data-store.js?v=78"></script><script src="js/hopdong/app.core.js?v=78"></script><script src="js/hopdong/doc-style.js?v=78"></script><script src="js/hopdong/data.js?v=78"></script><script src="js/hopdong/doc-builder.js?v=78"></script><script src="js/hopdong/docx-builder.js?v=78"></script><script src="js/hopdong/ui.js?v=78"></script><script src="js/hopdong/contract-api.js?v=78"></script>
+<script src="js/hopdong/mod-list.js?v=78"></script><script src="js/hopdong/mod-contract.js?v=78"></script><script src="js/hopdong/mod-customer.js?v=78"></script>
+<script src="js/luong/calc-insurance.js?v=78"></script><script src="js/luong/calc-payroll.js?v=78"></script><script src="js/luong/pr-api.js?v=78"></script><script src="js/luong/mod-payroll.js?v=78"></script><script src="js/luong/mod-policy.js?v=78"></script><script src="js/luong/mod-p3-extra.js?v=78"></script>
+<script src="js/app.js?v=78"></script>
 </body></html>

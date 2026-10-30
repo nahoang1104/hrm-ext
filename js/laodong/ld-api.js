@@ -1,0 +1,58 @@
+/* API nghiệp vụ HĐLĐ, phụ lục và sổ công văn. Không truy cập DOM; dữ liệu đi qua HX. */
+(function(g){
+ 'use strict';
+ const id=p=>p+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8), today=()=>new Date().toISOString().slice(0,10), iso=v=>String(v||'').slice(0,10), norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/Đ/g,'D').toLowerCase().trim();
+ const me=()=>{const x=g.HRX?.me?.();if(!x)throw Error('Chưa đăng nhập');return x}, manager=()=>{const x=me();if(x.role==='EMPLOYEE')throw Error('Chỉ quản lý trở lên được thực hiện thao tác này');return x};
+ const log=async(action,target,desc)=>{if(g.HRX?.log)await g.HRX.log(action,target||null,desc)};
+ const contracts=()=>g.HX.load('labor_contracts'), annexes=()=>g.HX.load('contract_annex');
+ const company=async()=>((await g.HX.load('company')).find(x=>x.id==='company')||{});
+ const staff=async()=>g.HRX.staff();
+ const status=(c,date=today())=>{if(c.tt==='TERMINATED'||c.chamDut?.ngay&&c.chamDut.ngay<=date)return'TERMINATED';if(c.tt!=='SIGNED')return'DRAFT';if(c.tu&&c.tu>date)return'DRAFT';if(c.den&&c.den<date)return'EXPIRED';if(c.den){const days=Math.ceil((new Date(c.den+'T00:00:00')-new Date(date+'T00:00:00'))/86400000);if(days<=30)return'EXPIRING'}return'ACTIVE'};
+ const validate=async(c,old)=>{
+  for(const[k,l]of [['uid','Nhân sự'],['loai','Loại hợp đồng'],['tu','Ngày bắt đầu'],['chucDanh','Chức danh']])if(!String(c[k]||'').trim())throw Error('Thiếu '+l);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(c.tu)||c.den&&!/^\d{4}-\d{2}-\d{2}$/.test(c.den))throw Error('Ngày hợp đồng không hợp lệ');
+  if(c.den&&c.den<c.tu)throw Error('Ngày kết thúc phải sau ngày bắt đầu');
+  if(c.loai==='KXD_THOI_HAN'&&c.den)throw Error('Hợp đồng không xác định thời hạn không nhập ngày kết thúc');
+  if((c.loai==='XD_THOI_HAN'||c.loai==='THU_VIEC')&&!c.den)throw Error('Loại hợp đồng này cần ngày kết thúc');
+  if(!Number.isSafeInteger(Number(c.luongCB))||Number(c.luongCB)<0)throw Error('Lương cơ bản phải là số nguyên VND không âm');
+  if(c.luongBH!==''&&c.luongBH!=null&&(!Number.isSafeInteger(Number(c.luongBH))||Number(c.luongBH)<0))throw Error('Lương đóng BH phải là số nguyên VND không âm');
+  c.luongCB=Number(c.luongCB);c.luongBH=c.luongBH===''||c.luongBH==null?null:Number(c.luongBH);c.phuCap=Array.isArray(c.phuCap)?c.phuCap:[];
+  for(const p of c.phuCap){if(!p.ten||!Number.isSafeInteger(Number(p.so))||Number(p.so)<0)throw Error('Phụ cấp cần tên và số tiền nguyên không âm');if(!['CHIU','MIEN','MIEN_DEN_MUC'].includes(p.thue))p.thue='CHIU';p.so=Number(p.so);p.bh=!!p.bh}
+  if(c.loai==='XD_THOI_HAN'&&c.den){const months=(new Date(c.den)-new Date(c.tu))/(86400000*30.4375);if(months>36.7)throw Error('Hợp đồng xác định thời hạn không được quá 36 tháng')}
+  if(c.loai==='THU_VIEC'){
+   const all=(await contracts()).filter(x=>x.uid===c.uid&&x.loai==='THU_VIEC'&&x.id!==c.id);
+   if(all.some(x=>norm(x.chucDanh)===norm(c.chucDanh)))throw Error('Công việc này đã có hợp đồng thử việc; chỉ thử việc một lần cho một công việc');
+   const policy=(await g.HX.load('policy')).filter(x=>!x.effectiveFrom||x.effectiveFrom<=c.tu).sort((a,b)=>String(b.effectiveFrom).localeCompare(String(a.effectiveFrom)))[0]||{};
+   const group={MANAGER:'probationMaxManager',COLLEGE:'probationMaxCollege',VOCATIONAL:'probationMaxVocational',OTHER:'probationMaxOther'}[c.nhomThuViec];if(!group)throw Error('Chọn nhóm công việc thử việc');const max=Number(policy[group]||0);if(!max)throw Error('Cần cấu hình giới hạn thử việc của nhóm này trong Tham số pháp lý trước khi lưu');if(c.den&&((new Date(c.den)-new Date(c.tu))/86400000+1)>max)throw Error('Thời gian thử việc vượt giới hạn đang cấu hình trong Policy');
+   if(c.luongThuViec==null||c.luongThuViec==='')throw Error('Cần nhập lương thử việc để kiểm tra ngưỡng tối thiểu');if(!Number.isSafeInteger(Number(c.luongThuViec))||Number(c.luongThuViec)<Math.ceil(c.luongCB*.85))throw Error('Lương thử việc phải đạt tối thiểu 85% lương công việc');c.luongThuViec=Number(c.luongThuViec);
+  }
+  if(c.tt==='SIGNED'){
+   const p=await g.HRX.profile(c.uid);if(!p?.profile?.taxCode)throw Error('Thiếu mã số thuế cá nhân trước khi ký');if(!p?.profile?.bhxhNo)throw Error('Thiếu số BHXH trước khi ký');
+   if(c.loai==='XD_THOI_HAN'){
+    const all=await contracts();let parent=c.prev,count=0,guard=new Set();while(parent&&!guard.has(parent)){guard.add(parent);const prev=all.find(x=>x.id===parent&&x.uid===c.uid);if(!prev||prev.tt!=='SIGNED'||prev.loai!=='XD_THOI_HAN')break;count++;parent=prev.prev||''}if(count>=2)throw Error('Đã có 2 hợp đồng xác định thời hạn liên tiếp trong chuỗi này; cần chọn hợp đồng không xác định thời hạn hoặc rà soát chuỗi hợp đồng');
+   }
+  }
+  const policyNow=(await g.HX.load('policy')).filter(x=>!x.effectiveFrom||x.effectiveFrom<=c.tu).sort((a,b)=>String(b.effectiveFrom).localeCompare(String(a.effectiveFrom)))[0]||{},co=await company(),p=await g.HRX.profile(c.uid),region=p?.profile?.workRegion||co.workRegion||'I',min=Number(policyNow['minimumWage'+region]||0);c.warnings=[];if(min&&c.luongCB<min)c.warnings.push(`Lương cơ bản thấp hơn lương tối thiểu vùng ${region} theo Policy (${min} VND)`);if(c.loai==='THU_VIEC'&&min&&Number(c.luongThuViec||0)<min)c.warnings.push(`Lương thử việc thấp hơn lương tối thiểu vùng ${region} theo Policy (${min} VND)`);
+  return c;
+ };
+ async function listContracts(){manager();return decorate(await contracts())}
+ async function decorate(rows){const people=await staff(),map=new Map(people.map(p=>[p.id,p]));return rows.map(c=>({...c,status:status(c),hetHanVanLam:status(c)==='EXPIRED'&&map.get(c.uid)?.status==='ACTIVE',employee:map.get(c.uid)||{id:c.uid,fullName:'(nhân sự không còn trong danh sách)',username:''}})).sort((a,b)=>String(b.tu).localeCompare(String(a.tu)))}
+ async function forUser(uid){const m=me();if(m.id!==uid&&m.role==='EMPLOYEE')throw Error('Không có quyền xem hợp đồng nhân sự khác');const all=await contracts(),own=all.filter(c=>c.uid===uid);if(m.role==='EMPLOYEE'&&own.some(c=>c.luongCB!=null))return own.map(c=>({...c,luongCB:undefined,luongBH:undefined,luongThuViec:undefined,phuCap:undefined,status:status(c)}));return decorate(own)}
+ async function saveContract(input,existingId){const actor=manager(),rows=await contracts(),old=existingId?rows.find(x=>x.id===existingId):null;if(existingId&&!old)throw Error('Không tìm thấy hợp đồng');if(old&&old.updated!==input.expectedUpdated)throw Error('Hợp đồng đã thay đổi; hãy tải lại trước khi lưu');if(old&&old.tt==='TERMINATED')throw Error('Không thể sửa hợp đồng đã chấm dứt');
+  const c={...(old||{}),...input};delete c.expectedUpdated;
+  if(!c.id){c.id=id('lc');const year=String(c.tu||today()).slice(0,4),n=await g.HX.nextSeq('hdld:'+year),co=await company();c.so=String(n).padStart(3,'0')+'/'+year+'/HĐLĐ-'+(co.shortName||'DV');c.created=new Date().toISOString();c.by=actor.username}
+  c.updated=new Date().toISOString();if(!c.ngayKy&&c.tt==='SIGNED')c.ngayKy=today();await validate(c,old);
+  await g.HX.save('labor_contracts',null,c,{expectedUpdated:old?.updated});await log(old?'UPDATE_LABOR_CONTRACT':'CREATE_LABOR_CONTRACT',c.uid,`${actor.username} ${old?'sửa':'tạo'} HĐLĐ ${c.so}`);return c}
+ async function terminateContract(contractId,day,reason){const actor=manager(),c=(await contracts()).find(x=>x.id===contractId);if(!c)throw Error('Không tìm thấy HĐLĐ');if(!day||!reason?.trim())throw Error('Cần ngày và lý do chấm dứt');c.tt='TERMINATED';c.chamDut={ngay:day,lyDo:reason.trim()};c.updated=new Date().toISOString();await g.HX.save('labor_contracts',null,c,{expectedUpdated:c.updated===undefined?undefined:(await contracts()).find(x=>x.id===contractId)?.updated});await log('TERMINATE_LABOR_CONTRACT',c.uid,`${actor.username} chấm dứt HĐLĐ ${c.so} ngày ${day}`);return c}
+ async function addAnnex(input){const actor=manager(),all=await contracts(),c=all.find(x=>x.id===input.hd);if(!c)throw Error('Không tìm thấy HĐLĐ');if(!input.tu||!input.loai)throw Error('Thiếu ngày hiệu lực hoặc loại phụ lục');const a={...input,id:id('la'),so:input.so||c.so+'-PL'+String((await annexes()).filter(x=>x.hd===c.id).length+1).padStart(2,'0'),created:new Date().toISOString(),updated:new Date().toISOString(),by:actor.username};if(typeof a.thayDoi==='string'){try{a.thayDoi=JSON.parse(a.thayDoi||'{}')}catch{throw Error('Nội dung thay đổi phải là JSON hợp lệ')}}await g.HX.save('contract_annex',null,a);await log('CREATE_CONTRACT_ANNEX',c.uid,`${actor.username} thêm phụ lục ${a.so} cho HĐLĐ ${c.so}`);return a}
+ async function activeContract(uid,date=today()){const actor=me();if(actor.role==='EMPLOYEE')throw Error('Chỉ quản lý trở lên được tra cứu HĐLĐ hiệu lực phục vụ nghiệp vụ');const rows=(await contracts()).filter(c=>c.uid===uid&&c.tt==='SIGNED'&&c.tu<=date&&(!c.den||c.den>=date)&&(!c.chamDut?.ngay||c.chamDut.ngay>date)).sort((a,b)=>String(b.tu).localeCompare(String(a.tu)));if(!rows.length)return null;const c=rows[0],axs=(await annexes()).filter(a=>a.hd===c.id&&a.tu<=date).sort((a,b)=>String(a.tu).localeCompare(String(b.tu)));const eff={...c};for(const a of axs)Object.assign(eff,a.thayDoi||{});return{...eff,annexes:axs}}
+ async function listDocuments(year){manager();return g.HX.load('documents',Number(year)||Number(today().slice(0,4)))}
+ async function saveDocument(input,year){const actor=manager(),y=Number(year)||Number((input.ngay||today()).slice(0,4)),rows=await g.HX.load('documents',y);let old=null;if(input.id){old=rows.find(x=>x.id===input.id);if(!old)throw Error('Không tìm thấy công văn');if(old.updated!==input.expectedUpdated)throw Error('Công văn đã thay đổi; hãy tải lại');}
+  if(!input.huong||!input.loai||!input.ngay||!input.trichYeu)throw Error('Thiếu hướng văn bản, loại, ngày hoặc trích yếu');if(/mật nhà nước|tuyệt mật|tối mật|mật\b/i.test(input.doMat||''))throw Error('Không lưu văn bản mật nhà nước trong hệ thống');
+  let row={...(old||{}),...input};delete row.expectedUpdated;
+  if(!row.id){const stt=await g.HX.nextSeq((row.huong==='DEN'?'congvan-den:':'congvan-di:')+y),co=await company(),short=co.shortName||'DV',dept=String(row.boPhan||'HCNS').replace(/[^\p{L}\p{N}]/gu,'').toUpperCase(),sig={QD:'QĐ',TTR:'TTr',GM:'GM',GGT:'GGT',GUQ:'GUQ',KH:'KH',HD:'HD',BC:'BC',BB:'BB',TB:'TB',KHAC:'KHAC'}[row.loai]||row.loai;row={...row,id:id('dc'),stt,so:row.huong==='DI'||row.huong==='NOI_BO'?`${String(stt).padStart(2,'0')}/${row.loai==='CV'?short+'-'+dept:sig+'-'+short}`:'',soDen:row.huong==='DEN'?String(stt).padStart(2,'0'):null,created:new Date().toISOString(),by:actor.username}}
+  row.updated=new Date().toISOString();row.xuLy=row.xuLy||{uid:row.nguoiXuLy||'',han:row.hanXuLy||'',tt:row.trangThai||'MOI'};await g.HX.save('documents',y,row,{expectedUpdated:input.id?rows.find(x=>x.id===input.id)?.updated:undefined});await log(input.id?'UPDATE_DOCUMENT':'CREATE_DOCUMENT',row.lienQuan?.uid||null,`${actor.username} ${input.id?'sửa':'tạo'} văn bản ${row.so||row.soDen||row.stt}: ${row.trichYeu}`);return row}
+ async function removeDocument(id0,year){const actor=manager(),rows=await g.HX.load('documents',Number(year)),row=rows.find(x=>x.id===id0);if(!row)throw Error('Không tìm thấy văn bản');await g.HX.remove('documents',Number(year),id0);await log('DELETE_DOCUMENT',row.lienQuan?.uid||null,`${actor.username} xóa văn bản ${row.so||row.soDen||row.stt}`)}
+ g.LDAPI={status,listContracts,forUser,saveContract,terminateContract,addAnnex,annexes,activeContract,ActiveContract:activeContract,listDocuments,saveDocument,removeDocument,staff,company,validate,canManage:()=>me().role!=='EMPLOYEE'};
+ if(typeof module!=='undefined'&&module.exports)module.exports=g.LDAPI;
+})(typeof window!=='undefined'?window:globalThis);

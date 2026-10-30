@@ -8,7 +8,7 @@ window.HDUI=(function(){
  // Tìm kiếm không phân biệt hoa/thường/dấu (giống HRM)
  const nd=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/đ/g,'d');
  // Ô \"Người lập\": avatar chữ cái + họ tên + @username; hợp đồng cũ chưa gán thì hiện nhãn xám
- const emp=c=>c.employeeId?`<div class="usercell">${avaBox('',c.employeeName||c.employeeUser)}<div><div class="cell-main">${esc(c.employeeName||c.employeeUser)}</div>${c.employeeUser?`<div class="cell-sub">@${esc(c.employeeUser)}</div>`:''}</div></div>`:'<span class="tag slate">Chưa gán</span>';
+ const emp=c=>c.employeeId?`<div class="usercell" data-uid="${esc(c.employeeId)}">${avaBox('',c.employeeName||c.employeeUser)}<div><div class="cell-main">${esc(c.employeeName||c.employeeUser)}</div>${c.employeeUser?`<div class="cell-sub">@${esc(c.employeeUser)}</div>`:''}</div></div>`:'<span class="tag slate">Chưa gán</span>';
  const day=s=>s?new Date(s).toLocaleDateString('vi-VN'):'—';
  // Phân trang: mỗi danh sách đăng ký hàm xử lý theo tên (nút/ô nhập số trang của HRM gọi HD_PAGE(tên, số trang))
  const pageHandlers={};

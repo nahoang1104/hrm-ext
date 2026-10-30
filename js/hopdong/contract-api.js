@@ -41,20 +41,26 @@ window.ContractAPI=(function(){
   if(c.employeeId===undefined){const w=window.HD_WHO?await window.HD_WHO():null;if(w){c.employeeId=w.id;c.employeeUser=w.username;c.employeeName=w.fullName||w.username}}
   if(!c.created)c.created=new Date().toISOString()};
  const vi=(a,b)=>String(a).localeCompare(String(b),'vi',{sensitivity:'base'});
+ let bootPromise=null;
  return{
   FIELDS,norm,
   async boot(){
-   for(const n of['contracts','customers'])DB[n]=await S.load(T[n]);
+   if(bootPromise)return bootPromise;
+   bootPromise=(async()=>{
+   const [contracts,customers]=await Promise.all([S.load(T.contracts),S.load(T.customers)]);
+   DB.contracts=contracts;DB.customers=customers;
    DB.contracts.forEach(unpack);
    // Hợp đồng cũ chưa có customerId: liên kết theo tên đơn vị (chỉ ghi lại đúng những hợp đồng vừa được liên kết)
    const dirty=[];
    DB.contracts.forEach(c=>{if(!c.customerId&&c.benA?.name){const k=this.findCustomer(c.benA.name);if(k){c.customerId=k.id;dirty.push(c)}}});
    for(const c of dirty)try{await S.saveOne(T.contracts,pack(c))}catch(e){}
    this.loadedAt=Date.now();
+   })();
+   try{return await bootPromise}finally{bootPromise=null}
   },
   // Tải lại dữ liệu nếu đã cũ (nhiều nhân viên cùng lập hợp đồng nên không dùng mãi bản tải lúc mở trang)
-  reset(){DB.contracts=[];DB.customers=[];this.loadedAt=0},
-  async ensure(maxAge=60000){if(!this.loadedAt||Date.now()-this.loadedAt>maxAge)await this.boot()},
+  reset(){DB.contracts=[];DB.customers=[];this.loadedAt=0;bootPromise=null},
+  async ensure(maxAge=300000){if(!this.loadedAt||Date.now()-this.loadedAt>maxAge)await this.boot()},
   findCustomer:name=>DB.customers.find(k=>norm(k.name)===norm(name)&&norm(name)),
   contractsOf:k=>visible().filter(c=>c.customerId===k.id||(!c.customerId&&norm(c.benA?.name)===norm(k.name))),
   async upsert(c){needMe();c=JSON.parse(JSON.stringify(c));const prev=DB.contracts.find(x=>x.id===c.id),u=me();
