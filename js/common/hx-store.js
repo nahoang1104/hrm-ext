@@ -1,6 +1,3 @@
-/* HX schema-aware CRUD. KIO adapter chỉ hỗ trợ cột payload, nên HX dùng format H1 giống DataStore của hợp đồng.
- * Không sửa js/api/kio-api.js. Ghi bộ mảnh mới trước, chỉ xóa bộ cũ sau khi ghi thành công.
- */
 (function(g){
  const defs={
   company:{key:'id',columns:['id','name','taxCode','address','representative','workRegion','socialInsuranceCode','shortName','workdaysMode','weekOff','standardHoursPerDay','updated','by']},
@@ -50,13 +47,30 @@
  const keyOfFromRaw=row=>String(row?.id??row?.effectiveFrom??'');
  const localLoad=async(name,year)=>api().list(table(name,year));
  async function load(name,year,opts={}){const t=table(name,year);if(!isKio())return localLoad(name,year);const cached=loadCache.get(t);if(!opts.force&&cached&&Date.now()-cached.at<CACHE_MS)return cached.rows.map(x=>({...x}));const rows=await grab(t);loadCache.set(t,{at:Date.now(),rows});return rows.map(x=>({...x}))}
- async function saveKio(name,year,row){const d=defs[name],t=table(name,year),key=keyOf(name,row);if(!key)throw Error('Thiếu khóa '+d.key+' của '+name);if(key.includes('|'))throw Error('Khóa HX không được chứa ký tự |');
-  // Dùng chỉ mục được dựng từ HX.load() thay vì quét toàn bộ bảng KIO ở mỗi lần ghi.
-  let index=rowIds[t];if(!index){let oldRows=[];try{oldRows=await KioStore.listRows(t,{force:true})}catch(e){if(!missingTable(e))throw e}index=new Map();oldRows.forEach(r=>{const m=RX.exec(String(r.payload??''));if(m){const a=index.get(m[1])||[];a.push(r.id);index.set(m[1],a)}});rowIds[t]=index}const oldIds=index.get(key)||[];
-  const rev=nextRevision(),raw=JSON.stringify(row),parts=[];for(let i=0;i<raw.length;i+=ROW)parts.push(raw.slice(i,i+ROW));if(!parts.length)parts.push('');
-  const encoded=parts.map((p,i)=>`H1|${key}|${rev}|${i}|${parts.length}|${p}`),written=[];
-  try{written[0]=resultId(await insert(t,encoded[0]));await runLimited(encoded.slice(1),PAR,async(p,i)=>{written[i+1]=resultId(await insert(t,p))})}catch(e){rowIds[t]=null;KioStore.invalidateTable(t);loadCache.delete(t);throw e}
-  const leftovers=[];await runLimited(oldIds,PAR,async id=>{try{await delRow(t,id)}catch(_){leftovers.push(id)}});index.set(key,[...leftovers,...written.filter(x=>x!=null)]);
+ async function updateRow(t,id,payload){
+  // krud.php nhận data theo cùng cấu trúc {field:{value,type}} như sendFormDataKRUD.
+  const r=await krud('update',t,{payload:{value:payload,type:'string'}},id);
+  if(!r||!r.success)throw Error(r?.error||'Cập nhật chunk '+id+' thất bại ở bảng '+t);
+  return r;
+ }
+ async function saveKio(name,year,row){
+  const d=defs[name],t=table(name,year),key=keyOf(name,row);if(!key)throw Error('Thiếu khóa '+d.key+' của '+name);if(key.includes('|'))throw Error('Khóa HX không được chứa ký tự |');
+  // Chỉ mục ID chunk được dựng từ HX.load(); nếu chưa có thì quét một lần.
+  let index=rowIds[t];if(!index){let oldRows=[];try{oldRows=await KioStore.listRows(t,{force:true})}catch(e){if(!missingTable(e))throw e}index=new Map();oldRows.forEach(r=>{const m=RX.exec(String(r.payload??''));if(m){const a=index.get(m[1])||[];a.push(r.id);index.set(m[1],a)}});rowIds[t]=index}
+  const oldIds=index.get(key)||[],rev=nextRevision(),raw=JSON.stringify(row),parts=[];for(let i=0;i<raw.length;i+=ROW)parts.push(raw.slice(i,i+ROW));if(!parts.length)parts.push('');
+  const encoded=parts.map((p,i)=>`H1|${key}|${rev}|${i}|${parts.length}|${p}`),updated=[],inserted=[];
+  try{
+   const common=Math.min(oldIds.length,encoded.length);
+   await runLimited(Array.from({length:common},(_,i)=>i),PAR,async i=>{await updateRow(t,oldIds[i],encoded[i]);updated[i]=oldIds[i]});
+   if(encoded.length>oldIds.length)await runLimited(encoded.slice(oldIds.length),PAR,async(p,i)=>{const id=resultId(await insert(t,p));if(id==null)throw Error('KIO không trả ID cho chunk mới');inserted[i+oldIds.length]=id});
+  }catch(e){
+   // UPDATE tại chỗ không có tính nguyên tử. Không xóa dữ liệu còn lại; buộc lần đọc sau bỏ cache.
+   rowIds[t]=null;KioStore.invalidateTable(t);loadCache.delete(t);
+   throw Error('Lưu HX bằng UPDATE chưa hoàn tất; dữ liệu có thể đang ở trạng thái ghi dở. '+(e?.message||e));
+  }
+  const surplus=oldIds.slice(encoded.length);
+  if(surplus.length){const failures=[];await runLimited(surplus,PAR,async id=>{try{await delRow(t,id)}catch(e){failures.push({id,error:e})}});if(failures.length){rowIds[t]=null;KioStore.invalidateTable(t);loadCache.delete(t);throw Error('Đã cập nhật dữ liệu nhưng chưa xóa hết chunk dư: '+failures.map(x=>x.id).join(', '))}}
+  index.set(key,[...oldIds.slice(0,Math.min(oldIds.length,encoded.length)),...inserted.filter(x=>x!=null)]);
   KioStore.invalidateTable(t);const cached=loadCache.get(t);if(cached)loadCache.set(t,{at:Date.now(),rows:[...cached.rows.filter(x=>keyOf(name,x)!==key),row]});return row;
  }
  async function save(name,year,row,opts={}){const d=defs[name];if(!d)throw Error('Bảng HX chưa khai báo: '+name);if(!row||typeof row!=='object')throw Error('Bản ghi HX không hợp lệ');
