@@ -29,6 +29,26 @@
  async function markSubmitted(year,quarter,extra={}){manager();if(!g.HRX.isSA())throw Error('Chỉ SUPER_ADMIN được xác nhận đã nộp tờ khai');const y=Number(year),id=`${y}-Q${Number(quarter)}`,all=await g.HX.load('tax_returns',y),row=all.find(x=>x.id===id);if(!row)throw Error('Chưa có dữ liệu nháp tờ khai');row.status='SUBMITTED';row.submittedAt=extra.submittedAt||new Date().toISOString();row.transactionId=String(extra.transactionId||'').trim();row.amount=Math.max(0,Math.round(Number(extra.amount)||0));row.updated=new Date().toISOString();await g.HX.save('tax_returns',y,row);await g.HRX.log('SUBMIT_TAX_RETURN',null,'Xác nhận đã nộp tờ khai TNCN '+id);return row}
  async function returnStatus(year,quarter){manager();return (await g.HX.load('tax_returns',Number(year))).find(x=>x.id===`${year}-Q${Number(quarter)}`)||null}
  async function saveSettlement(year,summary){manager();const y=Number(year);if(!yearOk(y))throw Error('Năm không hợp lệ');const existing=await g.HX.load('tax_settle',y),saved=[];for(const p of summary.people){const old=existing.find(x=>x.id===p.uid+'_'+y);if(old?.status==='FINAL')continue;const row={...(old||{}),id:p.uid+'_'+y,uid:p.uid,year:y,data:JSON.stringify(p),status:'DRAFT'};await g.HX.save('tax_settle',y,row);saved.push(row)}await g.HRX.log('SAVE_TAX_SETTLEMENT_DRAFT',null,'Lưu quyết toán thuế TNCN năm '+y);return saved}
- g.TxAPI={quarterSummary,annualSummary,saveDraft,markExported,markSubmitted,returnStatus,saveSettlement,quarterTotals,annualTotals};
+ /* ---- Tờ khai 05/KK-TNCN: tổng hợp chỉ tiêu [15]–[45] + thông tin đầu tờ khai + chỉ tiêu nhập tay ---- */
+ function checkQuarter(year,quarter){if(!yearOk(year))throw Error('Năm không hợp lệ');if(Number(year)===2026&&Number(quarter)<3)throw Error('Mẫu 05/KK-TNCN theo Thông tư 89 áp dụng từ 01/07/2026; quý I và quý II/2026 phải xử lý theo kỳ/mẫu chuyển tiếp trước đó.');quarterMonths(quarter)}
+ const parse=s=>{try{return JSON.parse(s||'{}')||{}}catch(e){return {}}};
+ async function form05(year,quarter){
+  manager();checkQuarter(year,quarter);const y=Number(year),q=Number(quarter);
+  const [rows,staff,co,all]=await Promise.all([loadYear(y),g.HRX.staff(),g.HX.load('company'),g.HX.load('tax_returns',y)]);
+  const saved=all.find(x=>x.id===`${y}-Q${q}`),old=parse(saved?.data).form||{},company=co.find(x=>x.id==='company')||{};
+  const auto=g.Form05KK.aggregate(visibleRows(rows,staff),y,q);
+  return {auto,company,header:old.header||null,manual:old.manual||{},status:saved?.status||null,year:y,quarter:q};
+ }
+ async function saveForm05(year,quarter,form,extra={}){
+  manager();checkQuarter(year,quarter);const y=Number(year),q=Number(quarter),id=`${y}-Q${q}`,all=await g.HX.load('tax_returns',y),old=all.find(x=>x.id===id);
+  if(old?.status==='SUBMITTED')throw Error('Tờ khai đã đánh dấu đã nộp, không thể ghi đè');
+  const data=parse(old?.data);data.form={header:form.header,manual:form.manual,ind:form.ind};
+  const row={...(old||{}),id,type:'05/KK-TNCN',period:id,status:extra.exported?'EXPORTED':(old?.status||'DRAFT'),data:JSON.stringify(data),updated:new Date().toISOString()};
+  if(extra.exported)row.exportedAt=new Date().toISOString();
+  await g.HX.save('tax_returns',y,row);
+  await g.HRX.log(extra.exported?'EXPORT_TAX_RETURN_05KK_'+extra.exported:'SAVE_TAX_RETURN_05KK',null,(extra.exported?'Xuất tờ khai 05/KK-TNCN ('+extra.exported+') ':'Lưu dữ liệu tờ khai 05/KK-TNCN ')+id);
+  return row;
+ }
+ g.TxAPI={form05,saveForm05,quarterSummary,annualSummary,saveDraft,markExported,markSubmitted,returnStatus,saveSettlement,quarterTotals,annualTotals};
  if(typeof module!=='undefined'&&module.exports)module.exports={quarterTotals,annualTotals};
 })(typeof window!=='undefined'?window:globalThis);
