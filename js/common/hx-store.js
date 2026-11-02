@@ -3,11 +3,14 @@
  */
 (function(g){
  const defs={
-  company:{key:'id',columns:['id','name','taxCode','address','representative','workRegion','socialInsuranceCode','shortName','workdaysMode','weekOff','updated','by']},
+  company:{key:'id',columns:['id','name','taxCode','address','representative','workRegion','socialInsuranceCode','shortName','workdaysMode','weekOff','standardHoursPerDay','updated','by']},
   policy:{key:'effectiveFrom',columns:['id','recordType','action','targetId','requestData','archived','deletedAt','deletedBy','originalEffectiveFrom','revisionAt','revisionBy','revisionData','effectiveFrom','minimumWageI','minimumWageII','minimumWageIII','minimumWageIV','minimumWageHourI','minimumWageHourII','minimumWageHourIII','minimumWageHourIV','baseSalary','insuranceCap','source','employeeSI','employeeHI','employeeUI','employerSI','employerHI','employerUI','status','proposedBy','approvedBy','approvedAt','note','updated','by']},
   counters:{key:'id',columns:['id','value','updated']},
   timesheets:{year:true,key:'id',columns:['id','uid','ym','d','ot','sh','lock','updated']},
-  payroll:{year:true,key:'id',columns:['id','uid','ym','tt','pv','hd','cong','in','out','adjustments','allowances','audit','correctionRequests','snapshot','calculationMode','created','by','updated']},
+  payroll:{year:true,key:'id',columns:['id','uid','ym','tt','pv','hd','cong','in','out','adjustments','allowances','bonusItems','overtimeInput','overtime','audit','correctionRequests','snapshot','calculationMode','created','by','updated']},
+  payroll_requests:{year:true,key:'id',columns:['id','payrollId','uid','ym','status','reason','requestedAt','requestedBy','note','resolvedAt','resolvedBy','created','updated']},
+  payroll_audit:{year:true,key:'id',columns:['id','payrollId','uid','ym','action','at','by','before','after']},
+  bonuses:{year:true,key:'id',columns:['id','uid','ym','title','type','amount','note','status','approvedBy','approvedAt','reviewNote','created','updated','by']},
   documents:{year:true,key:'id',columns:['id','huong','loai','so','stt','ngay','soDen','ngayDen','noiGui','noiNhan','trichYeu','nguoiKy','chucVuKy','doKhan','xuLy','lienQuan','fileId','created','by']},
   leave_entitlements:{key:'uid',columns:['id','uid','annualDays','updated','by']},
   leave:{year:true,key:'id',columns:['id','uid','from','to','type','reason','tt','approvedBy','updated','created','note','fileId']},

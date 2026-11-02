@@ -326,3 +326,7 @@ dialog .row{margin:14px -18px -18px;padding:10px 18px}
   .view{padding:16px 20px 28px}.topbar{padding:0 20px}
   nav a{padding:7px 11px}
 }
+
+/* Highlight payroll rows awaiting correction review for SUPER_ADMIN */
+#prRows tr.pr-correction-pending td{background:#fff8df!important}
+#prRows tr.pr-correction-pending td:first-child{box-shadow:inset 3px 0 0 #e6b94f}

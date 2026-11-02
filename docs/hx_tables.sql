@@ -27,3 +27,12 @@ CREATE TABLE IF NOT EXISTS hx_tax_settle_2027 (id INT AUTO_INCREMENT PRIMARY KEY
 
 -- P2: annual leave entitlement configuration (one record per employee).
 CREATE TABLE IF NOT EXISTS hx_leave_entitlements (id INT AUTO_INCREMENT PRIMARY KEY, payload VARCHAR(255) NOT NULL);
+
+-- Payroll workflow split (migrate forward; legacy embedded arrays remain readable).
+CREATE TABLE IF NOT EXISTS hx_payroll_requests_2026 (id INT AUTO_INCREMENT PRIMARY KEY, payload VARCHAR(255));
+CREATE TABLE IF NOT EXISTS hx_payroll_requests_2027 (id INT AUTO_INCREMENT PRIMARY KEY, payload VARCHAR(255));
+CREATE TABLE IF NOT EXISTS hx_payroll_audit_2026 (id INT AUTO_INCREMENT PRIMARY KEY, payload VARCHAR(255));
+CREATE TABLE IF NOT EXISTS hx_payroll_audit_2027 (id INT AUTO_INCREMENT PRIMARY KEY, payload VARCHAR(255));
+
+-- Tables with year suffix are provisioned by KIO on first INSERT when absent.
+-- The application does not run a scheduled Jan-1 table-creation job.

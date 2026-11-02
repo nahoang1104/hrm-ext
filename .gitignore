@@ -3,7 +3,6 @@ node_modules/
 uploads/*
 !uploads/.gitkeep
 !uploads/.htaccess
-CLAUDE.md
 *.md
 *.txt
 tests/*
