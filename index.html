@@ -3,7 +3,7 @@
 <title>HRM — Nhân sự & Hợp đồng</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-<link rel="stylesheet" href="css/style.css?v=88"><link rel="stylesheet" href="css/hopdong.css?v=88"><link rel="stylesheet" href="css/hrx.css?v=88"></head>
+<link rel="stylesheet" href="css/style.css?v=90"><link rel="stylesheet" href="css/hopdong.css?v=90"><link rel="stylesheet" href="css/hrx.css?v=90"></head>
 <body><div id="app"></div><div id="toast"></div>
 <script>
 // Mặc định lưu trên KIO (https://kio.dvqt.vn). Thêm ?driver=local để chạy cục bộ bằng IndexedDB, không đụng KIO.
@@ -11,12 +11,12 @@ window.HRM_CONFIG={mode:new URLSearchParams(location.search).get('driver')==='lo
 </script>
 <script src="https://kio.dvqt.vn/list.js"></script>
 <script src="https://kio.dvqt.vn/krud.js"></script>
-<script src="js/api/kio-api.js?v=88"></script><script src="js/api/store.js?v=88"></script><script src="js/api/hr-api.js?v=88"></script>
-<script src="js/common/zip-util.js?v=88"></script><script src="js/common/xlsx-builder.js?v=88"></script><script src="js/common/hx-store.js?v=88"></script><script src="js/luong/policy-seed.js?v=88"></script><script src="js/luong/policy.js?v=88"></script><script src="js/laodong/ld-api.js?v=88"></script><script src="js/laodong/doc-templates.js?v=88"></script><script src="js/laodong/docx-labor.js?v=88"></script><script src="js/laodong/mod-hdld.js?v=88"></script><script src="js/laodong/mod-congvan.js?v=88"></script>
-<script src="js/chamcong/cc-calc.js?v=88"></script><script src="js/chamcong/cc-api.js?v=88"></script><script src="js/chamcong/mod-grid.js?v=88"></script><script src="js/chamcong/mod-leave.js?v=88"></script><script src="js/chamcong/mod-shifts.js?v=88"></script><script src="js/chamcong/mod-me.js?v=88"></script>
+<script src="js/api/kio-api.js?v=90"></script><script src="js/api/store.js?v=90"></script><script src="js/api/hr-api.js?v=90"></script>
+<script src="js/common/zip-util.js?v=90"></script><script src="js/common/xlsx-builder.js?v=90"></script><script src="js/common/hx-store.js?v=90"></script><script src="js/luong/policy-seed.js?v=90"></script><script src="js/luong/policy.js?v=90"></script><script src="js/laodong/ld-api.js?v=90"></script><script src="js/laodong/ld-templates.js?v=90"></script><script src="js/laodong/ld-doc.js?v=90"></script><script src="js/laodong/mod-ldeditor.js?v=90"></script><script src="js/laodong/mod-hdld.js?v=90"></script><script src="js/laodong/mod-congvan.js?v=90"></script>
+<script src="js/chamcong/cc-calc.js?v=90"></script><script src="js/chamcong/cc-api.js?v=90"></script><script src="js/chamcong/mod-grid.js?v=90"></script><script src="js/chamcong/mod-leave.js?v=90"></script><script src="js/chamcong/mod-shifts.js?v=90"></script><script src="js/chamcong/mod-me.js?v=90"></script>
 <!-- Hợp đồng (js/hopdong/): nạp trước app.js để ModList/ModContract/ModCustomer có sẵn khi route chạy. Dùng chung kio-api.js, KIO và tham số ?driver=local với HRM. -->
-<script src="js/hopdong/config.js?v=88"></script><script src="js/hopdong/data-store.js?v=88"></script><script src="js/hopdong/app.core.js?v=88"></script><script src="js/hopdong/doc-style.js?v=88"></script><script src="js/hopdong/data.js?v=88"></script><script src="js/hopdong/doc-builder.js?v=88"></script><script src="js/hopdong/docx-builder.js?v=88"></script><script src="js/hopdong/ui.js?v=88"></script><script src="js/hopdong/contract-api.js?v=88"></script>
-<script src="js/hopdong/mod-list.js?v=88"></script><script src="js/hopdong/mod-contract.js?v=88"></script><script src="js/hopdong/mod-customer.js?v=88"></script>
-<script src="js/luong/calc-insurance.js?v=88"></script><script src="js/luong/calc-payroll.js?v=88"></script><script src="js/thue/calc-tax.js?v=88"></script><script src="js/thue/form-05kk.js?v=88"></script><script src="js/thue/tx-api.js?v=88"></script><script src="js/thue/mod-05kk.js?v=88"></script><script src="js/thue/mod-tax.js?v=88"></script><script src="js/luong/pr-api.js?v=88"></script><script src="js/luong/mod-payroll.js?v=88"></script><script src="js/luong/mod-policy.js?v=88"></script><script src="js/luong/mod-p3-extra.js?v=88"></script>
-<script src="js/app.js?v=88"></script>
+<script src="js/hopdong/config.js?v=90"></script><script src="js/hopdong/data-store.js?v=90"></script><script src="js/hopdong/app.core.js?v=90"></script><script src="js/hopdong/doc-style.js?v=90"></script><script src="js/hopdong/data.js?v=90"></script><script src="js/hopdong/doc-builder.js?v=90"></script><script src="js/hopdong/docx-builder.js?v=90"></script><script src="js/hopdong/ui.js?v=90"></script><script src="js/hopdong/contract-api.js?v=90"></script>
+<script src="js/hopdong/mod-list.js?v=90"></script><script src="js/hopdong/mod-contract.js?v=90"></script><script src="js/hopdong/mod-customer.js?v=90"></script>
+<script src="js/luong/calc-insurance.js?v=90"></script><script src="js/luong/calc-payroll.js?v=90"></script><script src="js/thue/calc-tax.js?v=90"></script><script src="js/thue/form-05kk.js?v=90"></script><script src="js/thue/tx-api.js?v=90"></script><script src="js/thue/mod-05kk.js?v=90"></script><script src="js/thue/mod-tax.js?v=90"></script><script src="js/luong/pr-api.js?v=90"></script><script src="js/luong/mod-payroll.js?v=90"></script><script src="js/luong/mod-policy.js?v=90"></script><script src="js/luong/mod-p3-extra.js?v=90"></script>
+<script src="js/app.js?v=90"></script>
 </body></html>

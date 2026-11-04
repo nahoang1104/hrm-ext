@@ -1,55 +1,141 @@
-(function(g){'use strict';const $=s=>document.querySelector(s),e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));let year=new Date().getFullYear(),rows=[];
- function dialog(title,fields,vals,submit){const d=document.createElement('dialog');d.className='wide';d.innerHTML=`<form><h3>${e(title)}</h3><div class="fgrid">${fields.map(f=>`<label${f.full?' class="full"':''}>${e(f.label)}${f.req?' *':''}${f.select?`<select name="${f.k}" ${f.req?'required':''}>${f.opts.map(o=>`<option value="${o[0]}" ${String(vals[f.k]||'')===o[0]?'selected':''}>${e(o[1])}</option>`).join('')}</select>`:f.area?`<textarea name="${f.k}" ${f.req?'required':''}>${e(vals[f.k]||'')}</textarea>`:`<input name="${f.k}" type="${f.type||'text'}" ${f.req?'required':''} ${f.accept?`accept="${f.accept}"`:''} value="${f.type==='file'?'':e(vals[f.k]||'')}">`}</label>`).join('')}</div><p class="err"></p><div class="row"><button type="button" data-cancel>Hủy</button><button class="pri">Lưu</button></div></form>`;document.body.append(d);d.showModal();d.querySelector('[data-cancel]').onclick=()=>d.close();d.querySelector('form').onsubmit=async ev=>{ev.preventDefault();const d0={};fields.forEach(f=>{const el=ev.currentTarget.elements[f.k];d0[f.k]=f.type==='file'?el.files[0]:el.value});try{await submit(d0);d.close();await render()}catch(x){d.querySelector('.err').textContent=x.message}};d.onclose=()=>d.remove()}
- const fields=[{k:'huong',label:'Hướng',select:true,req:true,opts:[['DEN','Văn bản đến'],['DI','Văn bản đi'],['NOI_BO','Nội bộ']]},{k:'loai',label:'Loại',select:true,req:true,opts:[['CV','Công văn'],['QD','Quyết định'],['TB','Thông báo'],['BB','Biên bản'],['TTR','Tờ trình'],['GM','Giấy mời'],['GGT','Giấy giới thiệu'],['GUQ','Giấy ủy quyền'],['KH','Kế hoạch'],['HD','Hướng dẫn'],['BC','Báo cáo'],['KHAC','Khác']]},{k:'ngay',label:'Ngày văn bản',type:'date',req:true},{k:'soDen',label:'Số đến (nếu có)'},{k:'noiGui',label:'Nơi gửi'},{k:'noiNhan',label:'Nơi nhận'},{k:'trichYeu',label:'Trích yếu',req:true,full:true},{k:'nguoiKy',label:'Người ký'},{k:'chucVuKy',label:'Chức vụ người ký'},{k:'doKhan',label:'Độ khẩn',select:true,opts:[['THUONG','Thường'],['KHAN','Khẩn'],['THUONG_KHAN','Thượng khẩn'],['HOA_TOC','Hỏa tốc']]},{k:'hanXuLy',label:'Hạn xử lý',type:'date'},{k:'nguoiXuLy',label:'ID người xử lý'},{k:'trangThai',label:'Trạng thái xử lý',select:true,opts:[['MOI','Mới'],['DANG_XU_LY','Đang xử lý'],['DA_XU_LY','Đã xử lý'],['LUU','Lưu']]},{k:'lienQuanUid',label:'ID nhân sự liên quan'},{k:'file',label:'File scan (PDF/JPG/PNG/WebP ≤5MB)',type:'file',accept:'application/pdf,image/jpeg,image/png,image/webp',full:true}];
- async function edit(row){dialog(row?'Sửa văn bản':'Đăng ký văn bản',fields,{ngay:new Date().toISOString().slice(0,10),huong:'DEN',loai:'CV',doKhan:'THUONG',trangThai:'MOI',...row},async d=>{const file=d.file;delete d.file;const uid=d.lienQuanUid;delete d.lienQuanUid;d.lienQuan={uid:uid||'',hd:row?.lienQuan?.hd||''};d.xuLy={uid:d.nguoiXuLy||'',han:d.hanXuLy||'',tt:d.trangThai||'MOI'};if(file)d.fileId=await g.HRX.uploadFile(uid||g.HRX.me().id,'documents',file);if(row){d.id=row.id;d.expectedUpdated=row.updated}await g.LDAPI.saveDocument(d,year)})}
- async function exp(){const out=rows.map(r=>({stt:r.stt,so:r.so,soDen:r.soDen,huong:r.huong,loai:r.loai,ngay:r.ngay,noiGui:r.noiGui,noiNhan:r.noiNhan,trichYeu:r.trichYeu,nguoiKy:r.nguoiKy,doKhan:r.doKhan,trangThai:r.xuLy?.tt,hanXuLy:r.xuLy?.han}));g.XLSXBuilder.download(out,{headers:['stt','so','soDen','huong','loai','ngay','noiGui','noiNhan','trichYeu','nguoiKy','doKhan','trangThai','hanXuLy'],sheetName:'So cong van',filename:`so-cong-van-${year}.xlsx`});await g.HRX.log('EXPORT_DOCUMENT_REGISTER_XLSX',null,`Xuất sổ công văn năm ${year}`)}
+/* Sổ công văn + Soạn văn bản từ mẫu. Văn bản đi/nội bộ được soạn bằng trình soạn mẫu (Điều/khoản, trường điền,
+   xem trước A4, Word/PDF) rồi đăng ký vào sổ để cấp số; nội dung lưu trong cột "body" của dòng sổ. */
+(function(g){
+ 'use strict';
+ const $=s=>document.querySelector(s),e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),today=()=>new Date().toISOString().slice(0,10);
+ let year=new Date().getFullYear(),rows=[];
+ const HUONG={DEN:'Văn bản đến',DI:'Văn bản đi',NOI_BO:'Nội bộ'};
+ const LOAI=[['CV','Công văn'],['QD','Quyết định'],['TB','Thông báo'],['BB','Biên bản'],['TTR','Tờ trình'],['GM','Giấy mời'],['GGT','Giấy giới thiệu'],['GUQ','Giấy ủy quyền'],['KH','Kế hoạch'],['HD','Hướng dẫn'],['BC','Báo cáo'],['KHAC','Khác']];
+ const TTX={MOI:'Mới',DANG_XU_LY:'Đang xử lý',DA_XU_LY:'Đã xử lý',LUU:'Lưu'};
+ const TPL_LOAI={'qd-chamdut':'QD','qd-tangluong':'QD','qd-chung':'QD','tb-chung':'TB'};
+ const TPL_HUONG={'gx-congtac':'DI','gx-thunhap':'DI'};
+ const opt=(list,v)=>list.map(o=>`<option value="${e(o[0])}" ${String(v??'')===o[0]?'selected':''}>${e(o[1])}</option>`).join('');
+ const mgr=()=>g.HRX.isMgr();
+ const root=()=>$('.view');
+ const noPerm=m=>{const r=root();if(r)r.innerHTML=`<div class="card">${m}</div>`};
+
+ /* ---------- hộp thoại sửa thông tin đăng ký (văn bản đến, hoặc sửa meta) ---------- */
+ function dialog(title,fields,vals,submit){
+  const d=document.createElement('dialog');d.className='wide';
+  d.innerHTML=`<form><h3>${e(title)}</h3><div class="fgrid">${fields.map(f=>`<label${f.full?' class="full"':''}>${e(f.label)}${f.req?' *':''}${f.select?`<select name="${f.k}" ${f.req?'required':''}>${f.opts.map(o=>`<option value="${o[0]}" ${String(vals[f.k]||'')===o[0]?'selected':''}>${e(o[1])}</option>`).join('')}</select>`:f.area?`<textarea name="${f.k}" ${f.req?'required':''}>${e(vals[f.k]||'')}</textarea>`:`<input name="${f.k}" type="${f.type||'text'}" ${f.req?'required':''} ${f.accept?`accept="${f.accept}"`:''} value="${f.type==='file'?'':e(vals[f.k]||'')}">`}</label>`).join('')}</div><p class="err"></p><div class="row"><button type="button" data-cancel>Hủy</button><button class="pri">Lưu</button></div></form>`;
+  document.body.append(d);d.showModal();d.querySelector('[data-cancel]').onclick=()=>d.close();
+  d.querySelector('form').onsubmit=async ev=>{ev.preventDefault();const o={};fields.forEach(f=>{const el=ev.currentTarget.elements[f.k];o[f.k]=f.type==='file'?el.files[0]:el.value});try{await submit(o);d.close();await render()}catch(x){d.querySelector('.err').textContent=x.message}};
+  d.onclose=()=>d.remove();
+ }
+ const FIELDS=[{k:'huong',label:'Hướng',select:true,req:true,opts:[['DEN','Văn bản đến'],['DI','Văn bản đi'],['NOI_BO','Nội bộ']]},{k:'loai',label:'Loại',select:true,req:true,opts:LOAI},{k:'ngay',label:'Ngày văn bản',type:'date',req:true},{k:'soDen',label:'Số đến (nếu có)'},{k:'noiGui',label:'Nơi gửi'},{k:'noiNhan',label:'Nơi nhận'},{k:'trichYeu',label:'Trích yếu',req:true,full:true},{k:'nguoiKy',label:'Người ký'},{k:'chucVuKy',label:'Chức vụ người ký'},{k:'doKhan',label:'Độ khẩn',select:true,opts:[['THUONG','Thường'],['KHAN','Khẩn'],['THUONG_KHAN','Thượng khẩn'],['HOA_TOC','Hỏa tốc']]},{k:'hanXuLy',label:'Hạn xử lý',type:'date'},{k:'nguoiXuLy',label:'ID người xử lý'},{k:'trangThai',label:'Trạng thái xử lý',select:true,opts:Object.entries(TTX)},{k:'lienQuanUid',label:'ID nhân sự liên quan'},{k:'file',label:'File scan (PDF/JPG/PNG/WebP ≤5MB)',type:'file',accept:'application/pdf,image/jpeg,image/png,image/webp',full:true}];
+ async function edit(row){
+  dialog(row?'Sửa thông tin văn bản':'Đăng ký văn bản đến / văn bản có sẵn',FIELDS,{ngay:today(),huong:'DEN',loai:'CV',doKhan:'THUONG',trangThai:row?.xuLy?.tt||'MOI',hanXuLy:row?.xuLy?.han||'',nguoiXuLy:row?.xuLy?.uid||'',lienQuanUid:row?.lienQuan?.uid||'',...row},async d=>{
+   const file=d.file;delete d.file;const uid=d.lienQuanUid;delete d.lienQuanUid;
+   d.lienQuan={uid:uid||'',hd:row?.lienQuan?.hd||''};d.xuLy={uid:d.nguoiXuLy||'',han:d.hanXuLy||'',tt:d.trangThai||'MOI'};
+   if(file)d.fileId=await g.HRX.uploadFile(uid||g.HRX.me().id,'documents',file);
+   if(row){d.id=row.id;d.expectedUpdated=row.updated}
+   await g.LDAPI.saveDocument(d,year);
+  });
+ }
+ async function exp(){
+  const out=rows.map(r=>({stt:r.stt,so:r.so,soDen:r.soDen,huong:r.huong,loai:r.loai,ngay:r.ngay,noiGui:r.noiGui,noiNhan:r.noiNhan,trichYeu:r.trichYeu,nguoiKy:r.nguoiKy,doKhan:r.doKhan,trangThai:r.xuLy?.tt,hanXuLy:r.xuLy?.han}));
+  g.XLSXBuilder.download(out,{headers:['stt','so','soDen','huong','loai','ngay','noiGui','noiNhan','trichYeu','nguoiKy','doKhan','trangThai','hanXuLy'],sheetName:'So cong van',filename:`so-cong-van-${year}.xlsx`});
+  await g.HRX.log('EXPORT_DOCUMENT_REGISTER_XLSX',null,`Xuất sổ công văn năm ${year}`);
+ }
+
+ /* ---------- trình soạn văn bản (dùng chung với màn Hợp đồng lao động) ---------- */
+ const download=(blob,name)=>{const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500)};
+ async function loadPerson(uid,hdHint){
+  let emp={},hd=hdHint||null;
+  if(uid){try{emp=await g.HRX.profile(uid)||{}}catch{emp={}}if(!hd){try{hd=await g.LDAPI.activeContract(uid)}catch{hd=null}}}
+  return {emp,hd};
+ }
+ /* opts: {tplId, row?, prefill?:{uid,hd}, back:fn, extraActions?:[{id,label,cls,confirm,run(api,{cur,vals,hd})}]} */
+ async function compose(opts){
+  if(!mgr())return noPerm('Bạn không có quyền soạn văn bản nghiệp vụ.');
+  const row=opts.row||null,tplId=row?.body?.tpl||opts.tplId,L=g.LDDoc,t0=L.tpl(tplId);
+  if(!t0)return noPerm('Không tìm thấy mẫu văn bản.');
+  const [co,staff]=await Promise.all([g.LDAPI.company(),g.LDAPI.staff()]);
+  let uid=row?.lienQuan?.uid||opts.prefill?.uid||'',cur=row;
+  let per=await loadPerson(uid,opts.prefill?.hd);
+  const rowYear=row?Number(String(row.ngay||'').slice(0,4))||year:year;
+  const mkCtx=(docSo,docDate)=>({mode:'doc',docSo,docDate,co,emp:per.emp,hd:per.hd});
+  const meta={huong:row?.huong||TPL_HUONG[tplId]||'NOI_BO',loai:row?.loai||TPL_LOAI[tplId]||'KHAC',trichYeu:row?.trichYeu||'',noiNhan:row?.noiNhan||'',nguoiKy:row?.nguoiKy||'',chucVuKy:row?.chucVuKy||'',doKhan:row?.doKhan||'THUONG'};
+  root().innerHTML=`<div class="sechd"><div><h2>${e(row?'Văn bản: '+(row.so||row.trichYeu):'Soạn văn bản từ mẫu')}</h2><p class="muted">Mẫu: ${e(t0.name)}${t0.src?` · nguồn: ${e(t0.src)}`:''}</p></div><div class="sp"></div><button id="cv-back">← Quay lại</button></div><div id="cv-host"></div>`;
+  $('#cv-back').onclick=()=>opts.back?opts.back():templates();
+  const state0=row?.body?{f:row.body.f,ov:row.body.ov,groups:row.body.groups}:{};
+  const extra=api=>{
+   api.extraEl.innerHTML=`<details class="ldx-sec" open><summary>Đăng ký vào sổ công văn</summary><div class="fgrid"><label class="full">Nhân sự liên quan (điền sẵn thông tin từ hồ sơ &amp; hợp đồng)<select id="cv-uid"><option value="">— Không gắn nhân sự —</option>${staff.map(p=>`<option value="${e(p.id)}" ${p.id===uid?'selected':''}>${e(p.fullName||p.username)} (@${e(p.username)})</option>`).join('')}</select></label><label>Hướng<select id="cv-huong">${opt([['DI','Văn bản đi'],['NOI_BO','Nội bộ']],meta.huong)}</select></label><label>Loại<select id="cv-loai">${opt(LOAI,meta.loai)}</select></label><label class="full">Trích yếu *<input id="cv-ty" value="${e(meta.trichYeu)}" placeholder="VD: Quyết định tăng lương cho …"></label><label>Nơi nhận<input id="cv-nn" value="${e(meta.noiNhan)}"></label><label>Độ khẩn<select id="cv-dk">${opt([['THUONG','Thường'],['KHAN','Khẩn'],['THUONG_KHAN','Thượng khẩn'],['HOA_TOC','Hỏa tốc']],meta.doKhan)}</select></label><label>Người ký<input id="cv-nk" value="${e(meta.nguoiKy)}"></label><label>Chức vụ người ký<input id="cv-cv" value="${e(meta.chucVuKy)}"></label></div><p class="muted">${row?`Số văn bản: <b>${e(row.so||'')}</b>`:'Số văn bản được cấp tự động khi lưu vào sổ.'}</p></details>`;
+   const el=api.extraEl;
+   const sync=()=>{meta.huong=el.querySelector('#cv-huong').value;meta.loai=el.querySelector('#cv-loai').value;meta.trichYeu=el.querySelector('#cv-ty').value;meta.noiNhan=el.querySelector('#cv-nn').value;meta.doKhan=el.querySelector('#cv-dk').value;meta.nguoiKy=el.querySelector('#cv-nk').value;meta.chucVuKy=el.querySelector('#cv-cv').value};
+   el.addEventListener('input',sync);
+   el.querySelector('#cv-uid').onchange=async ev=>{
+    if(Object.keys(api.getState().f).length&&!confirm('Đổi nhân sự sẽ điền lại các trường theo hồ sơ nhân sự mới (các giá trị đã nhập tay sẽ mất). Tiếp tục?')){ev.target.value=uid;return}
+    uid=ev.target.value;per=await loadPerson(uid,uid===opts.prefill?.uid?opts.prefill?.hd:null);
+    api.resetValues();api.setCtx(mkCtx(cur?.so||'',cur?.ngay||''));
+   };
+  };
+  const doSave=async api=>{
+   const T=g.LDDoc.tpl(api.tplId()),d=api.getDoc(),vals=d.vals;
+   if(!String(meta.trichYeu).trim())throw Error('Cần nhập trích yếu để đăng ký sổ công văn');
+   const ngay=vals.ngayKy;if(!/^\d{4}-\d{2}-\d{2}$/.test(ngay||''))throw Error('Cần nhập ngày ký / ban hành (mục Thông tin chung)');
+   if(cur&&String(ngay).slice(0,4)!==String(rowYear))throw Error('Không đổi sang năm khác của văn bản đã vào sổ; hãy soạn văn bản mới.');
+   const st=api.getState(),keep={};for(const k of T.fields)keep[k]=vals[k]??'';delete keep.so;   // chốt giá trị đã ban hành
+   const input={...(cur||{}),huong:meta.huong,loai:meta.loai,ngay,trichYeu:meta.trichYeu.trim(),noiNhan:meta.noiNhan,nguoiKy:meta.nguoiKy||vals.aRep||'',chucVuKy:meta.chucVuKy||vals.aPos||'',doKhan:meta.doKhan,noiGui:co.name||'',lienQuan:{uid:uid||'',hd:per.hd?.id||cur?.lienQuan?.hd||''},body:{tpl:st.tpl,f:keep,ov:st.ov,groups:st.groups}};
+   if(cur){input.id=cur.id;input.expectedUpdated=cur.updated}
+   const y=Number(String(ngay).slice(0,4));
+   const saved=await g.LDAPI.saveDocument(input,y);
+   cur=saved;api.setCtx(mkCtx(saved.so,saved.ngay));
+   await g.HRX.log('SAVE_LABOR_DOC_BODY',uid||null,`Lưu nội dung văn bản ${saved.so} từ mẫu ${st.tpl}`);
+   api.setError(`Đã lưu vào sổ công văn — số ${saved.so||saved.stt}.`,true);
+   return saved;
+  };
+  const actions=[{id:'save',label:'Lưu vào sổ công văn',cls:'pri',run:doSave}];
+  for(const a of opts.extraActions||[])actions.push({id:a.id,label:a.label,cls:a.cls||'',run:async api=>{
+   if(a.confirm&&!confirm(a.confirm))return;const saved=await doSave(api);await a.run(api,{cur:saved,vals:api.getDoc().vals,hd:per.hd});
+  }});
+  g.LDEditor.mount($('#cv-host'),{tplId,ctx:mkCtx(row?.so||'',row?.ngay||''),state:state0,
+   templates:g.LDDoc.tpls().filter(x=>x.group!=='HDLD'&&!row).map(x=>({id:x.id,name:x.name})),
+   extra,actions,
+   onExport:(k,doc)=>g.HRX.log('EXPORT_LABOR_DOC_'+k,uid||null,'Xuất văn bản từ mẫu '+doc.tpl+' ('+k+')')});
+ }
+
+ /* ---------- thư viện mẫu ---------- */
  async function templates(){
-  const root=$('.view');if(!g.HRX.isMgr()){root.innerHTML='<div class="card">Bạn không có quyền soạn văn bản nghiệp vụ.</div>';return}
-  const co=await g.LDAPI.company();
-  root.innerHTML=`<div class="sechd"><div><h2>Soạn văn bản từ mẫu</h2><p class="muted">Nhập thông tin ở bên trái, xem trước trang A4 ở bên phải như màn hình Hợp đồng kinh doanh.</p></div><div class="sp"></div><button id="dt-back">Quay lại sổ công văn</button><button id="dt-print">In bản xem trước</button><button id="dt-export" class="pri">Tạo file Word (.docx)</button></div>
-  <div class="dt-workspace"><section class="card dt-form-panel"><h3>Thông tin văn bản</h3><div class="fgrid dt-fields">
-   <label class="full">Mẫu văn bản<select id="dt-type"><option value="decision">Quyết định</option><option value="notice">Thông báo</option><option value="employment">Giấy xác nhận công tác</option><option value="income">Giấy xác nhận thu nhập</option>${Object.entries(g.LaborDocTemplates).filter(([k,v])=>v.rawText).map(([k,v])=>`<option value="${k}">${e(v.title)}</option>`).join("")}</select></label>
-   <label>Số/ký hiệu<input id="dt-number" placeholder="…/QĐ-…"></label><label>Địa danh, ngày ban hành<input id="dt-place-date" placeholder="TP. Hồ Chí Minh, ngày … tháng … năm …"></label>
-   <label>Họ tên / người nhận<input id="dt-name"></label><label>Chức danh<input id="dt-position"></label><label>Phòng ban<input id="dt-dept"></label><label>Nội dung / lý do<input id="dt-subject"></label><label>Ngày hiệu lực<input id="dt-date" type="date"></label><label>Từ ngày<input id="dt-from" type="date"></label><label>Đến ngày<input id="dt-to" type="date"></label><label>Thu nhập tháng (VND)<input id="dt-income" type="number" min="0"></label><label class="full">Nội dung bổ sung<textarea id="dt-extra" rows="4" placeholder="Nhập nội dung bổ sung nếu cần…"></textarea></label>
-  </div><div id="dt-raw-wrap" class="full" style="display:none"></div><p class="muted">Bản xem trước dùng để rà soát thể thức. Vui lòng kiểm tra nội dung trước khi ban hành.</p></section>
-  <section class="dt-preview-panel"><div class="dt-preview-head"><b>Xem trước văn bản</b><span class="muted">Khổ A4 · dọc</span></div><div class="dt-paper-wrap"><article id="dt-paper" class="dt-paper"></article></div></section></div>`;
-  const val=id=>document.getElementById('dt-'+id)?.value||'';
-  const rawWrap=document.getElementById('dt-raw-wrap'),rawInput=document.getElementById('dt-raw');
-  rawWrap.style.display='none';
-  const dynamic=document.createElement('div');dynamic.id='dt-dynamic-fields';dynamic.className='fgrid dt-fields full';rawWrap.parentNode.insertBefore(dynamic,rawWrap);
-  let activeTokens=[],activeRaw='';
-  const dateText=s=>{if(!s)return '';const [y,m,d]=s.split('-');return `${d}/${m}/${y}`};
-  const tokenPattern=/\.{2,}|…{2,}/g;
-  const makeFields=()=>{
-   const t=g.LaborDocTemplates[val('type')];let src=t?.rawText||'';src=src.split(/\r?\n/).map(line=>line.includes('|')?line.split('|').map(cell=>cell.trim()?cell:'................').join('|'):line).join('\n');activeRaw=src;activeTokens=[];
-   const chunks=src.split(tokenPattern);const matches=src.match(tokenPattern)||[];
-   let offset=0;matches.forEach((m,i)=>{const at=src.indexOf(m,offset);const before=src.slice(Math.max(0,at-48),at).replace(/\s+/g,' ').trim();let label=before.split(/[：:，,；;]/).pop().trim();label=label.replace(/^(và|tại|ngày|số|ông\/bà)\s+/i,'');if(!label)label=`Thông tin ${i+1}`;activeTokens.push({token:m,label:`${i+1}. ${label.slice(-48)}`,value:''});offset=at+m.length});
-   dynamic.innerHTML=activeTokens.map((f,i)=>`<label>${e(f.label)}<input data-dt-field="${i}" placeholder="Nhập ${e(f.label.replace(/^\d+\. /,''))}"></label>`).join('')||'<p class="muted">Mẫu này không có trường cần điền.</p>';
-   dynamic.querySelectorAll('input').forEach(x=>x.addEventListener('input',preview));
-  };
-  const filledRaw=()=>{let i=0;return activeRaw.replace(tokenPattern,()=>{const x=dynamic.querySelector(`[data-dt-field="${i}"]`);return x?.value?.trim()?x.value.trim():'................................';})};
-  const syncType=()=>{const raw=!!g.LaborDocTemplates[val('type')]?.rawText;dynamic.style.display=raw?'grid':'none';if(raw)makeFields();else dynamic.innerHTML='';document.querySelector('.dt-form-panel h3').textContent=raw?'Thông tin cần điền theo mẫu':'Thông tin văn bản';preview()};
-  const formatRaw=raw=>{
-   const lines=raw.split(/\r?\n/),out=[];let table=[];
-   const flush=()=>{if(table.length){out.push(`<table class="dt-template-table"><tbody>${table.map(r=>`<tr>${r.split('|').map(c=>`<td>${c.split(' / ').map(e).join('<br>')}</td>`).join('')}</tr>`).join('')}</tbody></table>`);table=[]}};
-   lines.forEach(line=>{const z=line.trim();if(!z){flush();return}if(z.includes('|')){table.push(z);return}flush();const safe=e(z);if(/^ĐIỀU\s+\d+|^ĐIỀU\s+[IVX]+|^Điều\s+\d+/i.test(z))out.push(`<h3 class="dt-clause">${safe}</h3>`);else if(/^(CỘNG HÒA|Độc lập|---o0o---|HỢP ĐỒNG LAO ĐỘNG|QUYẾT ĐỊNH|GIÁM ĐỐC|BÊN [AB]:)/i.test(z))out.push(`<p class="dt-centered"><b>${safe}</b></p>`);else if(/^[-•]/.test(z))out.push(`<p class="dt-bullet">${safe}</p>`);else out.push(`<p>${safe}</p>`)});flush();return out.join('')
-  };
-  const preview=()=>{
-   const type=val('type'),t=g.LaborDocTemplates[type],paper=document.getElementById('dt-paper');if(!paper)return;
-   if(t.rawText){paper.innerHTML=`<div class="dt-letterhead"><div class="dt-agency">${e(co.name||'TÊN ĐƠN VỊ')}</div><div class="dt-national"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><b>Độc lập - Tự do - Hạnh phúc</b></div></div><div class="dt-doc-meta"><span>${e(val('number'))}</span><span>${e(val('place-date'))}</span></div><div class="dt-doc-body dt-template-body">${formatRaw(filledRaw())}</div>`;scalePaper();return}
-   const values={hoTen:val('name'),nguoiNhan:val('name'),chucDanh:val('position'),phongBan:val('dept'),noiDung:val('subject'),ngayHieuLuc:dateText(val('date')),tuNgay:dateText(val('from')),denNgay:dateText(val('to')),thuNhap:Number(val('income')||0).toLocaleString('vi-VN')};const replace=s=>s.replace(/\{([^}]+)\}/g,(_,k)=>values[k]||'…………');const lines=[...t.body.map(replace),val('extra')].filter(Boolean);
-   paper.innerHTML=`<div class="dt-letterhead"><div class="dt-agency">${e(co.name||'TÊN ĐƠN VỊ')}</div><div class="dt-national"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><b>Độc lập - Tự do - Hạnh phúc</b></div></div><div class="dt-doc-meta"><span>${e(val('number'))}</span><span>${e(val('place-date'))}</span></div><h1>${e(t.title)}</h1><h2>${e(replace(t.subject||''))}</h2><div class="dt-doc-body">${lines.map(x=>`<p>${e(x)}</p>`).join('')}</div>`;scalePaper();
-  };
-  const scalePaper=()=>{const wrap=document.querySelector('.dt-paper-wrap'),paper=document.getElementById('dt-paper');if(!wrap||!paper)return;const scale=Math.min(1,Math.max(.35,(wrap.clientWidth-32)/794));paper.style.transform=`scale(${scale})`;paper.style.transformOrigin='top left';paper.style.marginLeft=Math.max(0,(wrap.clientWidth-794*scale)/2)+'px';wrap.style.height='auto';const pageCount=Math.max(1,Math.ceil((paper.scrollWidth||794)/818));wrap.style.minHeight=(1123*scale+32)+'px';let badge=wrap.parentElement.querySelector('.dt-page-count');if(!badge){badge=document.createElement('span');badge.className='dt-page-count muted';wrap.parentElement.querySelector('.dt-preview-head')?.append(badge)}if(badge)badge.textContent=`${pageCount} trang A4`;};
-  window.addEventListener('resize',scalePaper);
-  document.getElementById('dt-back').onclick=render;document.getElementById('dt-type').onchange=syncType;document.getElementById('dt-print').onclick=()=>window.print();
-  root.querySelectorAll('.dt-workspace input,.dt-workspace textarea,.dt-workspace select').forEach(el=>el.addEventListener('input',preview));
-  document.getElementById('dt-export').onclick=async()=>{try{const type=val('type'),t=g.LaborDocTemplates[type];if(t.rawText){const raw=filledRaw();const lines=[`Số/ký hiệu: ${val('number')}`,val('place-date'),...raw.split(/\r?\n/)];g.LaborDocx.download(t.title,lines,`${type}-${Date.now()}.docx`,co.name||'ĐƠN VỊ');await g.HRX.log('CREATE_LABOR_TEMPLATE_DOCX',null,'Tạo dự thảo văn bản mẫu '+t.title);return}const values={hoTen:val('name'),nguoiNhan:val('name'),chucDanh:val('position'),phongBan:val('dept'),noiDung:val('subject'),ngayHieuLuc:dateText(val('date')),tuNgay:dateText(val('from')),denNgay:dateText(val('to')),thuNhap:Number(val('income')||0).toLocaleString('vi-VN')};const replace=s=>s.replace(/\{([^}]+)\}/g,(_,k)=>values[k]||'…………');const lines=[`Số/ký hiệu: ${val('number')||'…………'}`,val('place-date')||'……, ngày …… tháng …… năm ……',...t.body.map(replace),val('extra')].filter(Boolean);g.LaborDocx.download(t.title,lines,`${type}-${Date.now()}.docx`,co.name||'ĐƠN VỊ');await g.HRX.log('CREATE_LABOR_TEMPLATE_DOCX',null,'Tạo dự thảo văn bản mẫu '+t.title)}catch(x){alert(x.message)}};
-  preview();
+  const r=root();if(!mgr())return noPerm('Bạn không có quyền soạn văn bản nghiệp vụ.');
+  const GR=[['HDLD','Hợp đồng lao động','Soạn trong màn Hợp đồng lao động để lưu cùng hồ sơ hợp đồng, phụ cấp và số hợp đồng.'],['QD','Quyết định','Điền thông tin, chỉnh Điều khoản, xuất Word/PDF và đăng ký vào sổ công văn.'],['CV','Thông báo & giấy xác nhận','Mẫu chung do hệ thống cung cấp (không thuộc bộ hợp đồng mẫu).']];
+  r.innerHTML=`<div class="sechd"><div><h2>Soạn văn bản từ mẫu</h2><p class="muted">Mỗi mẫu có nội dung, Điều khoản và các trường điền; xem trước A4 ngay khi nhập, chỉnh được từng Điều, xuất Word hoặc in/lưu PDF.</p></div><div class="sp"></div><button id="tp-reg">Sổ công văn</button></div>${GR.map(([k,n,h])=>`<h3>${e(n)}</h3><p class="muted">${e(h)}</p><div class="ldx-gal">${g.LDDoc.tpls().filter(t=>t.group===k).map(t=>`<div class="card ldx-card"><b>${e(t.name)}</b><small>${e(t.src||'Mẫu chung')}</small><small>${t.blocks.filter(b=>b.k==='art').length} Điều · ${t.fields.length} trường điền</small><button class="pri" data-t="${e(t.id)}">${k==='HDLD'?'Tạo hợp đồng':'Soạn văn bản'}</button></div>`).join('')}</div>`).join('')}`;
+  $('#tp-reg').onclick=()=>{location.hash='/documents'};
+  r.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{
+   const t=g.LDDoc.tpl(b.dataset.t);
+   if(t.group==='HDLD'){g.__ldNew={tpl:t.id};location.hash='/labor-contracts';g.ModHDLD?.render?.();return}
+   compose({tplId:t.id,back:templates});
+  });
  }
- async function render(){if(!g.HRX.isMgr()){const root=$('.view');if(root)root.innerHTML='<div class="card">Bạn không có quyền xem sổ công văn.</div>';return}rows=await g.LDAPI.listDocuments(year);const root=$('.view');root.innerHTML=`<div class="sechd"><h2>Sổ công văn</h2><div class="sp"></div><label>Năm <input id="dc-year" type="number" min="2000" max="2200" value="${year}" style="width:100px"></label><button id="dc-add" class="pri">Đăng ký văn bản</button><button id="dc-export">Xuất Excel</button><button id="dc-templates">Soạn văn bản mẫu</button></div><div class="bar"><input id="dc-q" placeholder="Tìm số, trích yếu, nơi gửi/nhận"></div><div class="card tbl-wrap"><table><thead><tr><th>STT</th><th>Số/ký hiệu</th><th>Ngày</th><th>Hướng</th><th>Nơi gửi/nhận</th><th>Trích yếu</th><th>Trạng thái</th><th></th></tr></thead><tbody id="dc-body"></tbody></table></div>`;
-  const draw=()=>{const q=$('#dc-q').value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');const list=rows.filter(r=>`${r.so} ${r.soDen} ${r.trichYeu} ${r.noiGui} ${r.noiNhan}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q));$('#dc-body').innerHTML=list.map(r=>`<tr><td>${r.stt||''}</td><td>${e(r.so||r.soDen||'')}</td><td>${e(r.ngay)}</td><td>${e(r.huong)}</td><td>${e(r.noiGui||r.noiNhan||'')}</td><td>${e(r.trichYeu)}</td><td>${e(r.xuLy?.tt||'MOI')}${r.xuLy?.han?`<small> · hạn ${e(r.xuLy.han)}</small>`:''}</td><td>${r.fileId?`<button class="sm" data-file="${e(r.fileId)}">Bản scan</button>`:''}<button class="sm" data-edit="${e(r.id)}">Sửa</button><button class="sm bad" data-del="${e(r.id)}">Xóa</button></td></tr>`).join('')||'<tr><td colspan="8">Không có văn bản.</td></tr>';$('#dc-body').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(rows.find(r=>r.id===b.dataset.edit)));$('#dc-body').querySelectorAll('[data-file]').forEach(b=>b.onclick=async()=>{try{window.open(await g.HRX.fileUrl(b.dataset.file),'_blank')}catch(x){alert(x.message)}});$('#dc-body').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Xóa văn bản này?')){await g.LDAPI.removeDocument(b.dataset.del,year);await render()}})};
-  $('#dc-q').oninput=draw;$('#dc-year').onchange=async ev=>{year=Number(ev.target.value)||new Date().getFullYear();await render()};$('#dc-add').onclick=()=>edit(null);$('#dc-export').onclick=()=>exp().catch(x=>alert(x.message));$('#dc-templates').onclick=templates;draw();
+
+ /* ---------- sổ công văn ---------- */
+ async function openBody(r){compose({tplId:r.body.tpl,row:r,back:render})}
+ async function quick(r,kind){
+  const L=g.LDDoc,b=r.body,t=L.tpl(b.tpl);if(!t)throw Error('Không tìm thấy mẫu của văn bản này');
+  const doc={tpl:b.tpl,vals:L.values(t,{mode:'doc',docSo:r.so,docDate:r.ngay},b.f),ov:b.ov,groups:b.groups};
+  if(kind==='docx'){download(L.toDocx(doc),`${L.slug(r.so||r.trichYeu)}.docx`);await g.HRX.log('EXPORT_LABOR_DOC_DOCX',r.lienQuan?.uid||null,'Xuất Word văn bản '+(r.so||''));return}
+  const fr=document.createElement('iframe');fr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';document.body.append(fr);
+  fr.srcdoc=L.toHtml(doc,{title:r.so||r.trichYeu});fr.onload=()=>{fr.contentWindow.focus();fr.contentWindow.print();setTimeout(()=>fr.remove(),60000)};
+  await g.HRX.log('EXPORT_LABOR_DOC_PDF',r.lienQuan?.uid||null,'In/PDF văn bản '+(r.so||''));
  }
- g.ModCongVan={render,templates};
+ async function render(){
+  if(!mgr())return noPerm('Bạn không có quyền xem sổ công văn.');
+  rows=await g.LDAPI.listDocuments(year);
+  root().innerHTML=`<div class="sechd"><h2>Sổ công văn</h2><div class="sp"></div><label>Năm <input id="dc-year" type="number" min="2000" max="2200" value="${year}" style="width:100px"></label><button id="dc-compose" class="pri">Soạn văn bản từ mẫu</button><button id="dc-add">Đăng ký văn bản đến</button><button id="dc-export">Xuất Excel</button></div><div class="bar"><input id="dc-q" placeholder="Tìm số, trích yếu, nơi gửi/nhận"></div><div class="card tbl-wrap"><table><thead><tr><th>STT</th><th>Số/ký hiệu</th><th>Ngày</th><th>Hướng</th><th>Nơi gửi/nhận</th><th>Trích yếu</th><th>Trạng thái</th><th></th></tr></thead><tbody id="dc-body"></tbody></table></div>`;
+  const draw=()=>{
+   const q=$('#dc-q').value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+   const list=rows.filter(r=>`${r.so} ${r.soDen} ${r.trichYeu} ${r.noiGui} ${r.noiNhan}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q));
+   $('#dc-body').innerHTML=list.map(r=>`<tr><td>${r.stt||''}</td><td>${e(r.so||r.soDen||'')}</td><td>${e(r.ngay)}</td><td>${e(HUONG[r.huong]||r.huong)}</td><td>${e(r.noiGui||r.noiNhan||'')}</td><td>${e(r.trichYeu)}${r.body?` <small class="tag slate">${e(g.LDDoc.tpl(r.body.tpl)?.name||'Soạn từ mẫu')}</small>`:''}</td><td>${e(TTX[r.xuLy?.tt]||'Mới')}${r.xuLy?.han?`<small> · hạn ${e(r.xuLy.han)}</small>`:''}</td><td class="acts">${r.body?`<button class="sm pri" data-open="${e(r.id)}">Mở văn bản</button><button class="sm" data-word="${e(r.id)}">Word</button><button class="sm" data-pdf="${e(r.id)}">PDF</button>`:''}${r.fileId?`<button class="sm" data-file="${e(r.fileId)}">Bản scan</button>`:''}<button class="sm" data-edit="${e(r.id)}">Thông tin</button><button class="sm bad" data-del="${e(r.id)}">Xóa</button></td></tr>`).join('')||'<tr><td colspan="8">Không có văn bản.</td></tr>';
+   const B=$('#dc-body'),by=id=>rows.find(r=>r.id===id);
+   B.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openBody(by(b.dataset.open)));
+   B.querySelectorAll('[data-word]').forEach(b=>b.onclick=()=>quick(by(b.dataset.word),'docx').catch(x=>alert(x.message)));
+   B.querySelectorAll('[data-pdf]').forEach(b=>b.onclick=()=>quick(by(b.dataset.pdf),'pdf').catch(x=>alert(x.message)));
+   B.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(by(b.dataset.edit)));
+   B.querySelectorAll('[data-file]').forEach(b=>b.onclick=async()=>{try{window.open(await g.HRX.fileUrl(b.dataset.file),'_blank')}catch(x){alert(x.message)}});
+   B.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Xóa văn bản này?')){await g.LDAPI.removeDocument(b.dataset.del,year);await render()}});
+  };
+  $('#dc-q').oninput=draw;$('#dc-year').onchange=async ev=>{year=Number(ev.target.value)||new Date().getFullYear();await render()};
+  $('#dc-add').onclick=()=>edit(null);$('#dc-compose').onclick=()=>templates();$('#dc-export').onclick=()=>exp().catch(x=>alert(x.message));draw();
+ }
+ g.ModCongVan={render,templates,compose};
 })(window);
